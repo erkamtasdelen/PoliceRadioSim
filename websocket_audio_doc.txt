@@ -1,0 +1,73 @@
+
+WebSocket Üzerinden JavaScript ile Ses Kaydı, Gönderimi ve Çalınması
+=====================================================================
+
+Bu dokümantasyon, tarayıcıda JavaScript kullanarak bir sesin nasıl kaydedileceğini,
+WebSocket üzerinden nasıl gönderileceğini ve başka istemcilerde nasıl çalınacağını adım adım açıklar.
+
+1. WebSocket Bağlantısı Kurma
+------------------------------
+
+İlk adım olarak WebSocket sunucusuna bağlantı kurmamız gerekiyor:
+
+```javascript
+const socket = new WebSocket("wss://policeradiosim.onrender.com");
+
+socket.onopen = () => {
+    console.log("WebSocket bağlantısı kuruldu.");
+};
+```
+
+2. Mikrofon Erişimi ve Ses Kaydı
+---------------------------------
+
+Tarayıcıdan mikrofon verisini almak için MediaRecorder API kullanılır:
+
+```javascript
+navigator.mediaDevices.getUserMedia({ audio: true })
+  .then(stream => {
+    const recorder = new MediaRecorder(stream);
+
+    recorder.ondataavailable = e => {
+        const audioBlob = e.data;
+        audioBlob.arrayBuffer().then(buffer => {
+            socket.send(buffer); // WebSocket ile ses gönderilir
+        });
+    };
+
+    recorder.start(1000); // Her 1 saniyede bir veri parçası gönderilir
+  })
+  .catch(err => console.error("Mikrofon hatası:", err));
+```
+
+3. Sunucudan Gelen Sesi Çalmak
+-------------------------------
+
+Sunucudan gelen ses verisi binary formatındadır. Bu veriyi çalmak için önce bir Blob oluşturulmalı, ardından Audio API kullanılarak ses oynatılmalıdır:
+
+```javascript
+socket.onmessage = event => {
+    const blob = new Blob([event.data], { type: 'audio/webm' });
+    const url = URL.createObjectURL(blob);
+    const audio = new Audio(url);
+    audio.play();
+};
+```
+
+4. Tam Akış
+------------
+
+- Kullanıcı mikrofona konuştuğunda, MediaRecorder ses kaydeder.
+- Her 1 saniyede bir parçayı `Blob` olarak `arrayBuffer()`'a çevirip WebSocket ile gönderir.
+- Sunucu bu veriyi diğer istemcilere iletir.
+- Diğer istemciler gelen binary veriyi `Blob` haline getirip, tarayıcıda ses olarak oynatır.
+
+5. Notlar ve Uyarılar
+----------------------
+
+- MediaRecorder API modern tarayıcılarda çalışır. Eski tarayıcılarda destek olmayabilir.
+- MediaRecorder varsayılan olarak `audio/webm` formatı kullanır.
+- WebSocket bağlantısı `wss://` protokolü ile başlatılmalıdır (güvenli bağlantı).
+- Render sunucusunda gelen veriyi doğrudan diğer istemcilere aktaran basit bir relay server çalışmalıdır.
+
+Bu sistem, gerçek zamanlı telsiz simülasyonları gibi uygulamalarda kullanılabilir.
