@@ -690,6 +690,7 @@ document.addEventListener('DOMContentLoaded', function() {
         }
         
         try {
+            // JSON formatında kanal ve kullanıcı bilgisini içeren ses verisi gönder
             const reader = new FileReader();
         
             reader.onloadend = function () {
