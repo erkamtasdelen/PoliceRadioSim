@@ -28,8 +28,10 @@ wss.on("connection", function connection(ws) {
         try {
             // Binary veri kontrolü
             if (msg instanceof Buffer) {
-                console.log("Binary veri alındı, işleniyor...");
-                // İleriki geliştirmeler için buraya binary veri işleme kodu eklenebilir
+                console.log("Binary veri alındı, boyut:", msg.length, "bytes");
+                
+                // Binary veriyi doğrudan gönder
+                broadcastBinaryData(ws, msg);
                 return;
             }
             
@@ -39,6 +41,12 @@ wss.on("connection", function connection(ws) {
                 data = JSON.parse(msg);
             } catch (err) {
                 console.error("JSON çözümleme hatası:", err);
+                console.log("Alınan veri türü:", typeof msg, "İçerik başlangıcı:", typeof msg === 'string' ? msg.substring(0, 50) : 'binary');
+                
+                // String ama JSON değilse de doğrudan ilet
+                if (typeof msg === 'string') {
+                    broadcastRawMessage(ws, msg);
+                }
                 return;
             }
             
@@ -66,7 +74,8 @@ wss.on("connection", function connection(ws) {
                         // Ses verisini işle ve diğer kullanıcılara ilet
                         handleAudioMessage(ws, data);
                         
-                        // Ses dosyasını kaydet (isteğe bağlı)
+                        // Ses dosyasını kaydet (isteğe bağlı - bu kısmı kapatabilirsiniz)
+                        /*
                         try {
                             const buffer = Buffer.from(data.audioData, 'base64');
                             const fileName = `audio-${data.clientId}-${data.timestamp}.webm`;
@@ -81,6 +90,7 @@ wss.on("connection", function connection(ws) {
                         } catch (fsErr) {
                             console.error("Dosya yazma hatası:", fsErr);
                         }
+                        */
                     } else {
                         console.error("Geçersiz ses verisi formatı:", data);
                     }
@@ -270,6 +280,74 @@ function broadcastUserCounts() {
         });
     } catch (error) {
         console.error("Kullanıcı sayısı yayınlama hatası:", error);
+    }
+}
+
+// Binary veriyi diğer kullanıcılara ilet
+function broadcastBinaryData(sender, binaryData) {
+    try {
+        console.log("Binary veri doğrudan iletiliyor, boyut:", binaryData.length);
+        
+        // Gönderen bilgilerini al
+        const senderInfo = clients.get(sender);
+        if (!senderInfo || !senderInfo.channel) {
+            console.log("Gönderenin kanal bilgisi yok, iletilemedi");
+            return;
+        }
+        
+        const senderChannel = senderInfo.channel;
+        let recipientCount = 0;
+        
+        // İlgili kanaldaki tüm kullanıcılara ilet
+        wss.clients.forEach(client => {
+            if (client !== sender && client.readyState === WebSocket.OPEN) {
+                const clientInfo = clients.get(client);
+                
+                // Sadece aynı kanaldaki kullanıcılara gönder
+                if (clientInfo && clientInfo.channel === senderChannel) {
+                    client.send(binaryData);
+                    recipientCount++;
+                }
+            }
+        });
+        
+        console.log(`Binary veri ${recipientCount} kullanıcıya iletildi - Kanal: ${senderChannel}`);
+    } catch (error) {
+        console.error("Binary veri iletme hatası:", error);
+    }
+}
+
+// String veriyi diğer kullanıcılara ilet
+function broadcastRawMessage(sender, message) {
+    try {
+        console.log("String veri doğrudan iletiliyor, boyut:", message.length);
+        
+        // Gönderen bilgilerini al
+        const senderInfo = clients.get(sender);
+        if (!senderInfo || !senderInfo.channel) {
+            console.log("Gönderenin kanal bilgisi yok, iletilemedi");
+            return;
+        }
+        
+        const senderChannel = senderInfo.channel;
+        let recipientCount = 0;
+        
+        // İlgili kanaldaki tüm kullanıcılara ilet
+        wss.clients.forEach(client => {
+            if (client !== sender && client.readyState === WebSocket.OPEN) {
+                const clientInfo = clients.get(client);
+                
+                // Sadece aynı kanaldaki kullanıcılara gönder
+                if (clientInfo && clientInfo.channel === senderChannel) {
+                    client.send(message);
+                    recipientCount++;
+                }
+            }
+        });
+        
+        console.log(`String veri ${recipientCount} kullanıcıya iletildi - Kanal: ${senderChannel}`);
+    } catch (error) {
+        console.error("String veri iletme hatası:", error);
     }
 }
 
