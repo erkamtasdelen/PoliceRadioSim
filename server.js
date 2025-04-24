@@ -208,6 +208,10 @@ function handleAudioMessage(ws, data) {
         const channel = data.channel;
         const senderId = data.clientId;
         
+        console.log(`🔊 Ses verisi alındı - Kanal: ${channel}, Gönderen: ${senderId}, Boyut: ${data.audioData.length} karakter`);
+        
+        let recipientCount = 0;
+        
         // İlgili kanaldaki tüm kullanıcılara ses verisini gönder (gönderen hariç)
         wss.clients.forEach(client => {
             if (client !== ws && client.readyState === WebSocket.OPEN) {
@@ -215,10 +219,26 @@ function handleAudioMessage(ws, data) {
                 
                 // Sadece aynı kanaldaki kullanıcılara gönder
                 if (clientInfo && clientInfo.channel === channel) {
+                    console.log(`🔄 Ses verisi iletiliyor - Hedef: ${clientInfo.id}`);
                     client.send(JSON.stringify(data));
+                    recipientCount++;
                 }
             }
         });
+        
+        console.log(`✅ Ses verisi ${recipientCount} kullanıcıya iletildi - Kanal: ${channel}`);
+        
+        // Hiç kullanıcı yoksa bildir
+        if (recipientCount === 0) {
+            console.log(`⚠️ Kanal ${channel}'de alıcı kullanıcı yok!`);
+            
+            // Kanal kullanıcılarını kontrol et
+            if (activeChannels[channel]) {
+                console.log(`📊 Kanal ${channel} kullanıcıları: ${Array.from(activeChannels[channel]).join(', ')}`);
+            } else {
+                console.log(`📊 Kanal ${channel} aktif değil`);
+            }
+        }
     } catch (error) {
         console.error("Ses mesajı iletme hatası:", error);
     }

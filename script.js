@@ -82,10 +82,11 @@ document.addEventListener('DOMContentLoaded', function() {
     // WebSocket bağlantısı kurma
     const connectWebSocket = () => {
         try {
+            console.log("🔌 WebSocket bağlantısı kuruluyor...", serverUrl);
             socket = new WebSocket(serverUrl);
             
             socket.onopen = () => {
-                console.log('WebSocket bağlantısı kuruldu');
+                console.log('✅ WebSocket bağlantısı kuruldu');
                 
                 // HTML element kontrolü (null olabilir)
                 const connectionStatus = document.getElementById('connectionStatus');
@@ -96,7 +97,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 
                 // Rastgele client ID oluştur
                 clientId = 'client_' + Math.random().toString(36).substring(2, 9);
-                console.log('Client ID:', clientId);
+                console.log('👤 Client ID:', clientId);
                 
                 if (peerIdDisplay) {
                     peerIdDisplay.textContent = `ID: ${clientId}`;
@@ -114,7 +115,7 @@ document.addEventListener('DOMContentLoaded', function() {
             };
             
             socket.onclose = (event) => {
-                console.log('WebSocket bağlantısı kapandı', event);
+                console.log('❌ WebSocket bağlantısı kapandı', event);
                 
                 // HTML element kontrolü
                 const connectionStatus = document.getElementById('connectionStatus');
@@ -130,7 +131,7 @@ document.addEventListener('DOMContentLoaded', function() {
             };
             
             socket.onerror = (error) => {
-                console.error('WebSocket hatası:', error);
+                console.error('❌ WebSocket hatası:', error);
                 
                 // HTML element kontrolü
                 const connectionStatus = document.getElementById('connectionStatus');
@@ -144,7 +145,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 handleWebSocketMessage(event);
             };
         } catch (error) {
-            console.error('WebSocket bağlantı hatası:', error);
+            console.error("❌ WebSocket bağlantı hatası:", error);
             
             // HTML element kontrolü
             const connectionStatus = document.getElementById('connectionStatus');
@@ -163,11 +164,12 @@ document.addEventListener('DOMContentLoaded', function() {
     // WebSocket üzerinden gelen mesajları işle
     const handleWebSocketMessage = async (event) => {
         try {
+            console.log("⚡ WebSocket mesajı alındı");
+            
             // Gelen veri Blob mu yoksa String mi kontrol et
             if (event.data instanceof Blob) {
-                console.log(event.data)
-                console.log("Blob formatında ses verisi alındı:", event.data.size);
-                console.log("Blob MIME tipi:", event.data.type);
+                console.log("📦 Blob formatında ses verisi alındı:", event.data.size);
+                console.log("📋 Blob MIME tipi:", event.data.type);
                 
                 // Blob detaylarını görüntüle
                 const blobInfo = {
@@ -187,35 +189,37 @@ document.addEventListener('DOMContentLoaded', function() {
             
             // Welcome mesajını kontrol et
             if (typeof messageStr === 'string' && messageStr.startsWith('Welcome')) {
-                console.log("Karşılama mesajı:", messageStr);
+                console.log("🎉 Karşılama mesajı:", messageStr);
                 return;
             }
             
             // JSON mesajı parse etmeyi dene
             try {
                 const message = JSON.parse(messageStr);
-                console.log("JSON mesajı alındı:", message);
+                console.log("📩 JSON mesajı alındı:", message);
                 
                 switch (message.type) {
                     case 'audio':
+                        console.log("🔊 Ses verisi mesajı alındı - Kanal:", message.channel, "Gönderen:", message.clientId);
                         if (message.channel == currentChannel && message.clientId !== clientId) {
-                            console.log("Başka bir kullanıcıdan ses verisi alındı. Kanal:", message.channel);
-                            console.log("Alınan JSON ses verisi:", {
+                            console.log("✅ Ses verisi işleniyor - Kanal eşleşti, farklı kullanıcıdan geliyor");
+                            console.log("📊 Alınan JSON ses verisi:", {
                                 kimden: message.clientId,
                                 format: message.format || "belirtilmemiş",
                                 kanal: message.channel,
-                                veriUzunluğu: message.audioData ? message.audioData.length + " karakter" : "yok",
+                                veriUzunluğu: message.audioData ? message.audioData.length + " karakter" : "yok", 
                                 zamanDamgası: message.timestamp ? new Date(message.timestamp).toISOString() : "belirtilmemiş"
                             });
                             
                             // Veri kontrolü
                             if (!message.audioData || typeof message.audioData !== 'string') {
-                                console.error("Geçersiz ses verisi formatı");
+                                console.error("❌ Geçersiz ses verisi formatı");
                                 return;
                             }
                             
                             // Base64 formatındaki ses verisini Blob'a dönüştür
                             try {
+                                console.log("🔄 Base64 veriyi Blob'a dönüştürme başlıyor");
                                 const binaryAudio = atob(message.audioData);
                                 const arrayBuffer = new ArrayBuffer(binaryAudio.length);
                                 const uint8Array = new Uint8Array(arrayBuffer);
@@ -227,21 +231,25 @@ document.addEventListener('DOMContentLoaded', function() {
                                 // Doğru MIME tipi ile Blob oluştur
                                 const mimeType = message.format || 'audio/webm';
                                 const audioBlob = new Blob([arrayBuffer], { type: mimeType });
-                                console.log("Dönüştürülen Blob:", {
+                                console.log("✅ Blob oluşturuldu:", {
                                     boyut: audioBlob.size + " bytes",
                                     tip: audioBlob.type
                                 });
                                 
                                 // Ses boyutunu kontrol et
                                 if (audioBlob.size < 100) {
-                                    console.warn("Ses verisi çok küçük, çalma atlanıyor");
+                                    console.warn("⚠️ Ses verisi çok küçük, çalma atlanıyor");
                                     return;
                                 }
                                 
+                                console.log("🔊 Ses çalınıyor...");
                                 playAudioFromBlob(audioBlob);
                             } catch (e) {
-                                console.error("Ses verisi dönüştürme hatası:", e);
+                                console.error("❌ Ses verisi dönüştürme hatası:", e);
                             }
+                        } else {
+                            console.log("⏭️ Ses verisi atlandı - Sebep: " + 
+                                (message.channel != currentChannel ? "Farklı kanal" : "Kendimden gelen ses"));
                         }
                         break;
                         
@@ -295,22 +303,24 @@ document.addEventListener('DOMContentLoaded', function() {
     // Blob formatındaki ses verisini çal - geliştirilmiş ve daha güvenilir
     const playAudioFromBlob = (audioBlob) => {
         if (!isRadioOn) {
-            console.log("Telsiz kapalı, ses çalınmıyor");
+            console.log("❌ Telsiz kapalı, ses çalınmıyor");
             return;
         }
         
         try {
+            console.log("🔔 Bip sesi çalınıyor...");
             // Bip sesi çal (Promise return ettiği için hata yönetimi ekle)
             beepSound.play().catch(err => {
-                console.log("Bip sesi çalarken hata, ana ses verisine geçiliyor");
+                console.log("⚠️ Bip sesi çalarken hata, ana ses verisine geçiliyor", err);
             }).finally(() => {
                 // Bip sesi çalsa da çalmasa da ses verisini çalmaya devam et
                 setTimeout(() => {
+                    console.log("🎵 Ana ses verisine geçiliyor...");
                     playSoundData(audioBlob);
                 }, 300);
             });
         } catch (error) {
-            console.error("Ses çalma sürecinde hata:", error);
+            console.error("❌ Ses çalma sürecinde hata:", error);
             // Hata olsa bile ses verisini çalmayı dene
             playSoundData(audioBlob);
         }
@@ -318,29 +328,36 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Gerçek ses verisini çalma - birden fazla yöntem dener
     const playSoundData = (audioBlob) => {
-        console.log("Ses verisi çalınmaya çalışılıyor...");
+        console.log("🎧 Ses verisi çalınmaya çalışılıyor...");
         
         // Blob boyutu kontrol et
         if (!audioBlob || audioBlob.size === 0) {
-            console.error("Boş ses verisi, çalma atlanıyor");
+            console.error("❌ Boş ses verisi, çalma atlanıyor");
             return;
         }
         
         // Blob türünü kontrol et ve düzelt
         let correctBlob = audioBlob;
         if (audioBlob.type !== 'audio/webm' && audioBlob.type !== 'audio/mp3' && audioBlob.type !== 'audio/wav') {
-            console.log("Blob türü belirlenmemiş, audio/webm olarak ayarlanıyor");
+            console.log("⚠️ Blob türü belirlenmemiş, audio/webm olarak ayarlanıyor");
             correctBlob = new Blob([audioBlob], { type: 'audio/webm' });
         }
         
+        console.log("🔍 Ses dosyası bilgileri:", {
+            format: correctBlob.type, 
+            boyut: correctBlob.size + " bytes",
+            tarih: new Date().toISOString()
+        });
+        
         // 1. Yöntem: Audio elementi ile çalma
         try {
+            console.log("🔄 1. Yöntem deneniyor: Audio elementi");
             const audioUrl = URL.createObjectURL(correctBlob);
             const audio = new Audio();
             
             // Debug için ses değerlerini göster
             audio.addEventListener("loadedmetadata", () => {
-                console.log("Ses yüklendi: Süre =", audio.duration, "saniye, Durum =", audio.readyState);
+                console.log("✅ Ses yüklendi: Süre =", audio.duration, "saniye, Durum =", audio.readyState);
             });
             
             // Oynatma durumunu izle
@@ -350,24 +367,26 @@ document.addEventListener('DOMContentLoaded', function() {
                 // Ses verisini doğrudan oynatma
                 if (!playAttempted) {
                     playAttempted = true;
+                    console.log("▶️ Ses oynatma başlatılıyor...");
                     audio.play()
                         .then(() => {
-                            console.log("Ses çalınıyor");
+                            console.log("✅ Ses çalınıyor");
                             // Statik sesi kıs
                             if (staticNoise) {
                                 staticNoise.setVolume(0.001);
                             }
                         })
                         .catch(err => {
-                            console.error("Ses çalma hatası (Method 1):", err);
+                            console.error("❌ Ses çalma hatası (Method 1):", err);
                             // Method 2 ile dene
+                            console.log("🔄 2. Yöntem deneniyor...");
                             playWithAudioContext(correctBlob);
                         });
                 }
             };
             
             audio.onended = () => {
-                console.log("Ses çalma tamamlandı");
+                console.log("✅ Ses çalma tamamlandı");
                 URL.revokeObjectURL(audioUrl);
                 // Statik sesi normale döndür
                 if (staticNoise) {
@@ -376,9 +395,10 @@ document.addEventListener('DOMContentLoaded', function() {
             };
             
             audio.onerror = (error) => {
-                console.error("Ses çalma hatası (audio element):", error);
+                console.error("❌ Ses çalma hatası (audio element):", error);
                 URL.revokeObjectURL(audioUrl);
                 // Alternatif yöntem ile dene
+                console.log("🔄 Hata nedeniyle 2. yöntem deneniyor...");
                 playWithAudioContext(correctBlob);
             };
             
@@ -389,14 +409,15 @@ document.addEventListener('DOMContentLoaded', function() {
             // Belirli bir süre içinde çalamazsa, alternatif yöntemi kullan
             setTimeout(() => {
                 if (!playAttempted) {
-                    console.log("Ses yükleme zaman aşımı, alternatif yöntem deneniyor");
+                    console.log("⏱️ Ses yükleme zaman aşımı, alternatif yöntem deneniyor");
                     playWithAudioContext(correctBlob);
                     URL.revokeObjectURL(audioUrl);
                 }
             }, 2000);
         } catch (error) {
-            console.error("Ses dosyası oluşturma hatası:", error);
+            console.error("❌ Ses dosyası oluşturma hatası:", error);
             // Alternatif yöntem dene
+            console.log("🔄 Hata nedeniyle 2. yöntem deneniyor...");
             playWithAudioContext(correctBlob);
         }
     };
@@ -404,15 +425,22 @@ document.addEventListener('DOMContentLoaded', function() {
     // 2. Yöntem: Web Audio API kullanarak ses çalma
     const playWithAudioContext = (blob) => {
         try {
+            console.log("🔄 Web Audio API ile ses çalma başlatılıyor");
             const audioContext = new (window.AudioContext || window.webkitAudioContext)();
             const fileReader = new FileReader();
             
             fileReader.onload = (event) => {
                 const arrayBuffer = event.target.result;
+                console.log("✅ Ses verisi yüklendi, boyut:", arrayBuffer.byteLength, "bytes");
                 
+                console.log("🔄 Ses verisi çözümleniyor...");
                 audioContext.decodeAudioData(arrayBuffer)
                     .then(audioBuffer => {
-                        console.log("AudioBuffer başarıyla oluşturuldu. Ses çalınıyor (Method 2)");
+                        console.log("✅ AudioBuffer başarıyla oluşturuldu. Ses özellikleri:", {
+                            süre: audioBuffer.duration + " saniye",
+                            örneklemeHızı: audioBuffer.sampleRate + " Hz",
+                            kanalSayısı: audioBuffer.numberOfChannels
+                        });
                         
                         // Statik sesi kıs
                         if (staticNoise) {
@@ -425,7 +453,7 @@ document.addEventListener('DOMContentLoaded', function() {
                         
                         // Ses bittiğinde
                         source.onended = () => {
-                            console.log("AudioContext ses çalma tamamlandı");
+                            console.log("✅ AudioContext ses çalma tamamlandı");
                             // Statik sesi normale döndür
                             if (staticNoise) {
                                 staticNoise.setVolume(0.01);
@@ -434,20 +462,21 @@ document.addEventListener('DOMContentLoaded', function() {
                         
                         // Bağlantıları yap ve çal
                         source.connect(audioContext.destination);
+                        console.log("▶️ AudioContext ile ses çalınıyor...");
                         source.start(0);
                     })
                     .catch(error => {
-                        console.error("AudioBuffer çözümleme hatası:", error);
+                        console.error("❌ AudioBuffer çözümleme hatası:", error);
                     });
             };
             
             fileReader.onerror = (error) => {
-                console.error("Dosya okuma hatası:", error);
+                console.error("❌ Dosya okuma hatası:", error);
             };
             
             fileReader.readAsArrayBuffer(blob);
         } catch (error) {
-            console.error("Web Audio API ile çalma hatası:", error);
+            console.error("❌ Web Audio API ile çalma hatası:", error);
         }
     };
     
@@ -645,16 +674,19 @@ document.addEventListener('DOMContentLoaded', function() {
     // Ses verisini WebSocket üzerinden gönder
     const sendAudioData = (audioBlob, channelNumber) => {
         if (!socket || socket.readyState !== WebSocket.OPEN) {
-            console.error("Ses verisi gönderilemiyor: WebSocket bağlantısı açık değil.");
+            console.error("❌ Ses verisi gönderilemiyor: WebSocket bağlantısı açık değil.");
             return;
         }
         
-        console.log("Ses gönderiliyor - Kanal:", channelNumber, "Boyut:", audioBlob.size, "bytes", "MIME:", audioBlob.type);
+        console.log("📤 Ses gönderiliyor - Kanal:", channelNumber, "Boyut:", audioBlob.size, "bytes", "MIME:", audioBlob.type);
         
         // Boyut kontrolü
         if (audioBlob.size > 100000) {
-            console.warn("Ses verisi çok büyük, sıkıştırılıyor...");
+            console.warn("⚠️ Ses verisi çok büyük, sıkıştırılıyor...");
             // Daha düşük kalite için burada sıkıştırma işlemi yapılabilir
+        } else if (audioBlob.size < 1000) {
+            console.warn("⚠️ Ses verisi çok küçük, gönderilmiyor...");
+            return;
         }
         
         try {
@@ -664,12 +696,20 @@ document.addEventListener('DOMContentLoaded', function() {
                 try {
                     const result = reader.result;
         
+                    if (!result || typeof result !== 'string') {
+                        console.error("❌ FileReader sonucu geçersiz:", result);
+                        return;
+                    }
+        
                     if (!result.startsWith("data:audio")) {
-                        console.error("Beklenmeyen MIME tipi:", result);
+                        console.error("❌ Beklenmeyen MIME tipi:", result.split(',')[0]);
                         return;
                     }
         
                     const base64Audio = result.split(',')[1];
+                    
+                    // Veri boyutunu logla
+                    console.log("📊 Base64 veri boyutu:", base64Audio.length, "karakter");
                     
                     // Sunucunun beklediği formatta veri hazırlama
                     const audioMessage = {
@@ -688,22 +728,32 @@ document.addEventListener('DOMContentLoaded', function() {
                         typeof audioMessage.format !== 'string' || 
                         typeof audioMessage.audioData !== 'string' || 
                         typeof audioMessage.timestamp !== 'number') {
-                        console.error("Geçersiz veri formatı:", audioMessage);
+                        console.error("❌ Geçersiz veri formatı:", audioMessage);
                         return;
                     }
+                    
+                    // JSON formatına dönüştür
+                    const jsonData = JSON.stringify(audioMessage);
+                    console.log("📊 JSON veri boyutu:", jsonData.length, "karakter");
         
-                    socket.send(JSON.stringify(audioMessage));
-                    console.log("Ses verisi JSON formatında gönderildi 🎧");
+                    // Veriyi gönder
+                    socket.send(jsonData);
+                    console.log("✅ Ses verisi JSON formatında gönderildi 🎧");
         
                 } catch (e) {
-                    console.error("Ses verisi JSON'a çevrilirken hata:", e);
+                    console.error("❌ Ses verisi JSON'a çevrilirken hata:", e);
                 }
+            };
+        
+            // FileReader hata işleyici
+            reader.onerror = function(error) {
+                console.error("❌ FileReader hatası:", error);
             };
         
             reader.readAsDataURL(audioBlob);
         
         } catch (err) {
-            console.error("FileReader hatası:", err);
+            console.error("❌ FileReader hatası:", err);
         }
     };
     
@@ -850,16 +900,17 @@ document.addEventListener('DOMContentLoaded', function() {
     // Kanala katılma fonksiyonu
     const joinChannel = (channel) => {
         if (socket && socket.readyState === WebSocket.OPEN) {
+            console.log(`📡 ${channel} kanalına katılma isteği gönderiliyor...`);
             const joinMessage = {
                 type: 'join',
-                channel: channel,
+                channel: channel.toString(), // String olarak gönder
                 clientId: clientId
             };
             
             socket.send(JSON.stringify(joinMessage));
-            console.log(`${channel} kanalına katılma isteği gönderildi`);
+            console.log(`✅ ${channel} kanalına katılma isteği gönderildi`);
         } else {
-            console.warn("WebSocket bağlantısı kurulu değil, kanala katılınamıyor");
+            console.warn("⚠️ WebSocket bağlantısı kurulu değil, kanala katılınamıyor");
         }
     };
     
