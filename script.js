@@ -208,6 +208,12 @@ document.addEventListener('DOMContentLoaded', function() {
                                 zamanDamgası: message.timestamp ? new Date(message.timestamp).toISOString() : "belirtilmemiş"
                             });
                             
+                            // Veri kontrolü
+                            if (!message.audioData || typeof message.audioData !== 'string') {
+                                console.error("Geçersiz ses verisi formatı");
+                                return;
+                            }
+                            
                             // Base64 formatındaki ses verisini Blob'a dönüştür
                             try {
                                 const binaryAudio = atob(message.audioData);
@@ -218,11 +224,19 @@ document.addEventListener('DOMContentLoaded', function() {
                                     uint8Array[i] = binaryAudio.charCodeAt(i);
                                 }
                                 
-                                const audioBlob = new Blob([arrayBuffer], { type: message.format || 'audio/webm' });
+                                // Doğru MIME tipi ile Blob oluştur
+                                const mimeType = message.format || 'audio/webm';
+                                const audioBlob = new Blob([arrayBuffer], { type: mimeType });
                                 console.log("Dönüştürülen Blob:", {
                                     boyut: audioBlob.size + " bytes",
                                     tip: audioBlob.type
                                 });
+                                
+                                // Ses boyutunu kontrol et
+                                if (audioBlob.size < 100) {
+                                    console.warn("Ses verisi çok küçük, çalma atlanıyor");
+                                    return;
+                                }
                                 
                                 playAudioFromBlob(audioBlob);
                             } catch (e) {
@@ -656,15 +670,27 @@ document.addEventListener('DOMContentLoaded', function() {
                     }
         
                     const base64Audio = result.split(',')[1];
-        
+                    
+                    // Sunucunun beklediği formatta veri hazırlama
                     const audioMessage = {
                         type: 'audio',
-                        channel: channelNumber,
+                        channel: channelNumber.toString(), // String olarak gönder
                         clientId: clientId,
                         audioData: base64Audio,
                         format: audioBlob.type || 'audio/webm;codecs=opus',
                         timestamp: Date.now()
                     };
+                    
+                    // Veri yapısını doğrula
+                    if (typeof audioMessage.type !== 'string' || 
+                        typeof audioMessage.channel !== 'string' || 
+                        typeof audioMessage.clientId !== 'string' || 
+                        typeof audioMessage.format !== 'string' || 
+                        typeof audioMessage.audioData !== 'string' || 
+                        typeof audioMessage.timestamp !== 'number') {
+                        console.error("Geçersiz veri formatı:", audioMessage);
+                        return;
+                    }
         
                     socket.send(JSON.stringify(audioMessage));
                     console.log("Ses verisi JSON formatında gönderildi 🎧");
@@ -675,6 +701,7 @@ document.addEventListener('DOMContentLoaded', function() {
             };
         
             reader.readAsDataURL(audioBlob);
+        
         } catch (err) {
             console.error("FileReader hatası:", err);
         }
