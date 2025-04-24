@@ -180,8 +180,9 @@ function handleAudioMessage(ws, data) {
         const channel = data.channel;
         const senderId = data.clientId;
         
-        // Anlık iletim için minimal loglama
-        // console.log(`🔊 Ses verisi alındı - Kanal: ${channel}, Gönderen: ${senderId}, Boyut: ${data.audioData.length} karakter`);
+        console.log(`🔊 Ses verisi alındı - Kanal: ${channel}, Gönderen: ${senderId}, Boyut: ${data.audioData.length} karakter`);
+        
+        let recipientCount = 0;
         
         // İlgili kanaldaki tüm kullanıcılara ses verisini gönder (gönderen hariç)
         wss.clients.forEach(client => {
@@ -190,11 +191,26 @@ function handleAudioMessage(ws, data) {
                 
                 // Sadece aynı kanaldaki kullanıcılara gönder
                 if (clientInfo && clientInfo.channel === channel) {
-                    // console.log(`🔄 Ses verisi iletiliyor - Hedef: ${clientInfo.id}`);
+                    console.log(`🔄 Ses verisi iletiliyor - Hedef: ${clientInfo.id}`);
                     client.send(JSON.stringify(data));
+                    recipientCount++;
                 }
             }
         });
+        
+        console.log(`✅ Ses verisi ${recipientCount} kullanıcıya iletildi - Kanal: ${channel}`);
+        
+        // Hiç kullanıcı yoksa bildir
+        if (recipientCount === 0) {
+            console.log(`⚠️ Kanal ${channel}'de alıcı kullanıcı yok!`);
+            
+            // Kanal kullanıcılarını kontrol et
+            if (activeChannels[channel]) {
+                console.log(`📊 Kanal ${channel} kullanıcıları: ${Array.from(activeChannels[channel]).join(', ')}`);
+            } else {
+                console.log(`📊 Kanal ${channel} aktif değil`);
+            }
+        }
     } catch (error) {
         console.error("Ses mesajı iletme hatası:", error);
     }
@@ -263,23 +279,5 @@ function processJsonMessage(ws, data) {
             console.log("Bilinmeyen mesaj türü:", data.type);
     }
 }
-
-// WebSocket sunucu durum bilgisini periyodik olarak göster
-setInterval(() => {
-    try {
-        const activeClients = Array.from(clients.values());
-        const activeChannelUsers = {};
-        
-        // Kanal kullanıcılarını hesapla
-        for (const channelName in activeChannels) {
-            activeChannelUsers[channelName] = activeChannels[channelName].size;
-        }
-        
-        console.log(`📊 Sunucu durumu - Toplam bağlı kullanıcı: ${activeClients.length}`);
-        console.log(`📊 Aktif kanallar:`, activeChannelUsers);
-    } catch (error) {
-        console.error("Durum raporu oluşturma hatası:", error);
-    }
-}, 30000); // 30 saniyede bir durum raporu
 
 console.log(`WebSocket server running on port ${PORT}`);

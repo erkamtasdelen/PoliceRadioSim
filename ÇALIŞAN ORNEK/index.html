@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Telsiz Simülatörü</title>
+    <link rel="stylesheet" href="style.css">
+    <!-- PeerJS kütüphanesi -->
+    <script src="https://unpkg.com/peerjs@1.4.7/dist/peerjs.min.js"></script>
+</head>
+<body>
+    <div class="radio-wrapper">
+        <img id="radio-img" src="Radio-Without_Background.png" alt="Telsiz">
+        <button id="toggle-btn" class="power-btn">Güç</button>
+        <button id="beep-btn" class="talk-btn">Konuş</button>
+        
+        <!-- Kanal seçimi ve göstergesi -->
+        <div id="channel-display" class="channel-display">--</div>
+        <button id="channel-up" class="channel-btn channel-up">▲</button>
+        <button id="channel-down" class="channel-btn channel-down">▼</button>
+        
+        <!-- Debug göstergesi -->
+        <div id="users-count" class="users-count">0</div>
+        
+        <!-- Peer ID göstergesi (debug için) -->
+        <div id="peer-id" class="peer-id">ID: -</div>
+    </div>
+    <script src="script.js"></script>
+</body>
+</html> 

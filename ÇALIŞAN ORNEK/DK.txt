@@ -1,0 +1,91 @@
+**Render Üzerinde WebSocket Sunucusu Kurma ve JavaScript ile Bağlanma
+
+Bu doküman, Render.com uzerinde bir WebSocket sunucusu kurup, frontend tarafından JavaScript ile bu sunucuya bağlanmayı adım adım anlatmaktadır.
+
+---
+
+## 1. WebSocket Sunucusu (Node.js)
+
+### server.js
+```js
+const WebSocket = require("ws");
+const PORT = process.env.PORT || 10000;
+
+const wss = new WebSocket.Server({ port: PORT });
+
+wss.on("connection", function connection(ws) {
+  console.log("Client connected");
+
+  ws.on("message", function incoming(message) {
+    console.log("Received:", message);
+
+    // Mesajı herkese ilet
+    wss.clients.forEach(client => {
+      if (client.readyState === WebSocket.OPEN) {
+        client.send(message);
+      }
+    });
+  });
+
+  ws.send("Welcome to the WebSocket server!");
+});
+```
+
+### package.json
+```json
+{
+  "name": "radio-ws",
+  "version": "1.0.0",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "ws": "^8.13.0"
+  }
+}
+```
+
+---
+
+## 2. Render.com Üzerine Deploy Etme
+
+1. GitHub'da bir repo oluştur ve yukarıdaki dosyaları yükle.
+2. [https://render.com](https://render.com) adresine git.
+3. “New Web Service” seçeneğine tıkla ve GitHub hesabını bağla.
+4. Reponu seçtikten sonra Render ayarları:
+   - **Environment**: Node
+   - **Build Command**: `npm install`
+   - **Start Command**: `npm start`
+   - **Port**: `10000` (ya da otomatik PORT environment değişkeni)
+
+Render deploy işlemini yapacak ve sana bir WebSocket adresi verecek:
+```
+wss://radio-ws.onrender.com
+```
+
+---
+
+## 3. Frontend Tarafından Bağlanma (JavaScript)
+
+```html
+<script>
+  const socket = new WebSocket("wss://radio-ws.onrender.com");
+
+  socket.onopen = function () {
+    console.log("Connected to WebSocket");
+    socket.send("Unit 12 is online");
+  };
+
+  socket.onmessage = function (event) {
+    console.log("Received from server:", event.data);
+  };
+</script>
+```
+
+Bu yapı ile, WebSocket sunucusuna gerçek zamanlı bağlantı sağlayabilir, telsiz tarzı mesajlaşma uygulamaları gelistirebilirsiniz.
+
+---
+
+Eğer Render yerine Glitch, Railway veya Firebase gibi alternatifleri tercih etmek istersen, benzer adımlarla entegre edebilirsin. Destek istersen yazman yeterli!
+
