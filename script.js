@@ -9,6 +9,8 @@ document.addEventListener('DOMContentLoaded', function() {
     const usersCountDisplay = document.getElementById('users-count');
     const peerIdDisplay = document.getElementById('peer-id');
     
+
+    
     // Ses dosyalarını oluşturma
     const radioOnSound = new Audio('Radio_On.mp3');
     const radioOffSound = new Audio('Radio_Off.mp3');
@@ -967,45 +969,133 @@ document.addEventListener('DOMContentLoaded', function() {
     channelUpBtn.addEventListener('click', () => changeChannel(1));
     channelDownBtn.addEventListener('click', () => changeChannel(-1));
     
-    // Konuşma fonksiyonu
-    beepBtn.addEventListener('mousedown', function() {
-        if (!isRadioOn) {
-            alert('Önce telsizi açmalısınız!');
-            return;
-        }
+    // Konuşma butonunun uzun basılı tutma sorununu çöz
+    if (beepBtn) {
+        // Standart olayları önle
+        ['contextmenu', 'selectstart', 'copy', 'dragstart'].forEach(eventName => {
+            beepBtn.addEventListener(eventName, (e) => {
+                e.preventDefault();
+                return false;
+            });
+        });
         
-        // Konuş düğmesine basıldığında görsel efekt
-        beepBtn.classList.add('active-talk');
+        // Dokunmatik olaylar için
+        beepBtn.addEventListener('touchstart', (e) => {
+            e.preventDefault(); // Uzun dokunma menüsünü engelle
+            
+            if (!isRadioOn) {
+                alert('Önce telsizi açmalısınız!');
+                return;
+            }
+            
+            // Konuş düğmesine basıldığında görsel efekt
+            beepBtn.classList.add('active-talk');
+            
+            // Bip sesi çal
+            beepSound.play();
+            
+            // Statik gürültüyü azalt
+            if (staticNoise) {
+                staticNoise.setVolume(0.005);
+            }
+            
+            // Kayda başla
+            if (mediaRecorder && mediaRecorder.state === 'inactive') {
+                mediaRecorder.start();
+                console.log("Ses kaydı başlatıldı");
+            }
+        }, { passive: false });
         
-        // Bip sesi çal
-        beepSound.play();
+        beepBtn.addEventListener('touchend', (e) => {
+            e.preventDefault();
+            
+            // Konuş düğmesi bırakıldığında efekti kaldır
+            beepBtn.classList.remove('active-talk');
+            
+            // Statik gürültüyü normale döndür
+            if (staticNoise) {
+                staticNoise.setVolume(0.01);
+            }
+            
+            // Kaydı durdur
+            stopRecording();
+        }, { passive: false });
         
-        // Statik gürültüyü azalt
-        if (staticNoise) {
-            staticNoise.setVolume(0.005);
-        }
+        // Mouse olayları için
+        beepBtn.addEventListener('mousedown', function(e) {
+            e.preventDefault(); // Metni seçmeyi engelle
+            if (e.button === 2) return false; // Sağ tıklama menüsünü engelle
+            
+            if (!isRadioOn) {
+                alert('Önce telsizi açmalısınız!');
+                return;
+            }
+            
+            // Konuş düğmesine basıldığında görsel efekt
+            beepBtn.classList.add('active-talk');
+            
+            // Bip sesi çal
+            beepSound.play();
+            
+            // Statik gürültüyü azalt
+            if (staticNoise) {
+                staticNoise.setVolume(0.005);
+            }
+            
+            // Kayda başla
+            if (mediaRecorder && mediaRecorder.state === 'inactive') {
+                mediaRecorder.start();
+                console.log("Ses kaydı başlatıldı");
+            }
+        });
         
-        // Kayda başla
-        if (mediaRecorder && mediaRecorder.state === 'inactive') {
-            mediaRecorder.start();
-            console.log("Ses kaydı başlatıldı");
-        }
-    });
-    
-    beepBtn.addEventListener('mouseup', function() {
-        if (!isRadioOn) return;
+        beepBtn.addEventListener('mouseup', function() {
+            if (!isRadioOn) return;
+            
+            // Konuş düğmesi bırakıldığında efekti kaldır
+            beepBtn.classList.remove('active-talk');
+            
+            // Statik gürültüyü normale döndür
+            if (staticNoise) {
+                staticNoise.setVolume(0.01);
+            }
+            
+            // Kaydı durdur
+            stopRecording();
+        });
         
-        // Konuş düğmesi bırakıldığında efekti kaldır
-        beepBtn.classList.remove('active-talk');
+        // Fare düğmesinin basılı tutulduğu alandan çıkması durumunda kaydı durdur
+        beepBtn.addEventListener('mouseleave', function() {
+            if (!isRadioOn) return;
+            
+            // Efekti kaldır
+            beepBtn.classList.remove('active-talk');
+            
+            // Statik gürültüyü normale döndür
+            if (staticNoise) {
+                staticNoise.setVolume(0.01);
+            }
+            
+            // Kaydı durdur
+            stopRecording();
+        });
         
-        // Statik gürültüyü normale döndür
-        if (staticNoise) {
-            staticNoise.setVolume(0.01);
-        }
-        
-        // Kaydı durdur
-        stopRecording();
-    });
+        // Dokunmatik için benzer fonksiyon
+        beepBtn.addEventListener('touchcancel', function() {
+            if (!isRadioOn) return;
+            
+            // Efekti kaldır
+            beepBtn.classList.remove('active-talk');
+            
+            // Statik gürültüyü normale döndür
+            if (staticNoise) {
+                staticNoise.setVolume(0.01);
+            }
+            
+            // Kaydı durdur
+            stopRecording();
+        });
+    }
     
     // Sayfa kapatıldığında kaynakları temizle
     window.addEventListener('beforeunload', function() {

@@ -222,10 +222,30 @@ function broadcastUserCounts() {
         // Toplam kullanıcı sayısı
         const totalUsers = clients.size;
         
-        // Her kanaldaki kullanıcı sayısını hesapla
+        // Aktif client ID'leri topla
+        const activeClientIds = new Set();
+        clients.forEach(client => {
+            activeClientIds.add(client.id);
+        });
+        
+        // Her kanaldaki kullanıcı sayısını hesapla ve inaktif kullanıcıları temizle
         const channelCounts = {};
         for (const channel in activeChannels) {
+            // Kanaldan bağlantısı kopmuş kullanıcıları çıkar
+            for (const clientId of activeChannels[channel]) {
+                if (!activeClientIds.has(clientId)) {
+                    console.log(`Bağlantısı kopmuş kullanıcı ${clientId} kanaldan ${channel} çıkarılıyor`);
+                    activeChannels[channel].delete(clientId);
+                }
+            }
+            
+            // Kullanıcı sayısını güncelle
             channelCounts[channel] = activeChannels[channel].size;
+            
+            // Eğer kanalda hiç kullanıcı kalmadıysa kanalı sil
+            if (activeChannels[channel].size === 0) {
+                delete activeChannels[channel];
+            }
         }
         
         // Tüm bağlı kullanıcılara kullanıcı sayılarını gönder
