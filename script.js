@@ -164,22 +164,33 @@ document.addEventListener('DOMContentLoaded', function() {
     // WebSocket üzerinden gelen mesajları işle
     const handleWebSocketMessage = async (event) => {
         try {
-            console.log("⚡ WebSocket mesajı alındı");
+            console.log("⚡ WebSocket mesajı alındı - Veri türü:", typeof event.data);
             
             // Gelen veri Blob mu yoksa String mi kontrol et
             if (event.data instanceof Blob) {
                 console.log("📦 Blob formatında ses verisi alındı:", event.data.size);
                 console.log("📋 Blob MIME tipi:", event.data.type);
                 
-                // Blob detaylarını görüntüle
-                const blobInfo = {
-                    size: event.data.size + " bytes",
-                    type: event.data.type || "belirtilmemiş",
-                    timestamp: new Date().toISOString()
-                };
-                console.table(blobInfo);
+                // Blob'dan string okuyarak JSON olup olmadığını kontrol et
+                try {
+                    const blobText = await new Response(event.data).text();
+                    if (blobText.startsWith('{') && blobText.includes('"type":"audio"')) {
+                        console.log("🔄 Blob içinde JSON verisi tespit edildi, işleniyor...");
+                        
+                        try {
+                            const jsonData = JSON.parse(blobText);
+                            processJsonAudio(jsonData);
+                            return;
+                        } catch (jsonErr) {
+                            console.error("❌ Blob içindeki JSON çözümleme hatası:", jsonErr);
+                        }
+                    }
+                } catch (blobReadErr) {
+                    console.error("❌ Blob okuma hatası:", blobReadErr);
+                }
                 
-                // Blob formatında ses verisi - doğrudan çal
+                // JSON değilse direkt ses olarak çal
+                console.log("🔊 Direkt ses verisi olarak işleniyor");
                 playAudioFromBlob(event.data);
                 return;
             }
@@ -194,111 +205,121 @@ document.addEventListener('DOMContentLoaded', function() {
             }
             
             // JSON mesajı parse etmeyi dene
-            try {
-                const message = JSON.parse(messageStr);
-                console.log("📩 JSON mesajı alındı:", message);
-                
-                switch (message.type) {
-                    case 'audio':
-                        console.log("🔊 Ses verisi mesajı alındı - Kanal:", message.channel, "Gönderen:", message.clientId);
-                        if (message.channel == currentChannel && message.clientId !== clientId) {
-                            console.log("✅ Ses verisi işleniyor - Kanal eşleşti, farklı kullanıcıdan geliyor");
-                            console.log("📊 Alınan JSON ses verisi:", {
-                                kimden: message.clientId,
-                                format: message.format || "belirtilmemiş",
-                                kanal: message.channel,
-                                veriUzunluğu: message.audioData ? message.audioData.length + " karakter" : "yok", 
-                                zamanDamgası: message.timestamp ? new Date(message.timestamp).toISOString() : "belirtilmemiş"
-                            });
+            if (typeof messageStr === 'string') {
+                try {
+                    const message = JSON.parse(messageStr);
+                    console.log("📩 JSON mesajı alındı:", message);
+                    
+                    switch (message.type) {
+                        case 'audio':
+                            processJsonAudio(message);
+                            break;
                             
-                            // Veri kontrolü
-                            if (!message.audioData || typeof message.audioData !== 'string') {
-                                console.error("❌ Geçersiz ses verisi formatı");
-                                return;
-                            }
+                        case 'userCount':
+                            // Kullanıcı sayısını güncelle
+                            updateActiveUsers(message.count, message.channelCounts);
+                            break;
                             
-                            // Base64 formatındaki ses verisini Blob'a dönüştür
-                            try {
-                                console.log("🔄 Base64 veriyi Blob'a dönüştürme başlıyor");
-                                const binaryAudio = atob(message.audioData);
-                                const arrayBuffer = new ArrayBuffer(binaryAudio.length);
-                                const uint8Array = new Uint8Array(arrayBuffer);
-                                
-                                for (let i = 0; i < binaryAudio.length; i++) {
-                                    uint8Array[i] = binaryAudio.charCodeAt(i);
-                                }
-                                
-                                // Doğru MIME tipi ile Blob oluştur
-                                const mimeType = message.format || 'audio/webm';
-                                const audioBlob = new Blob([arrayBuffer], { type: mimeType });
-                                console.log("✅ Blob oluşturuldu:", {
-                                    boyut: audioBlob.size + " bytes",
-                                    tip: audioBlob.type
-                                });
-                                
-                                // Ses boyutunu kontrol et
-                                if (audioBlob.size < 100) {
-                                    console.warn("⚠️ Ses verisi çok küçük, çalma atlanıyor");
-                                    return;
-                                }
-                                
-                                console.log("🔊 Ses çalınıyor...");
-                                playAudioFromBlob(audioBlob);
-                            } catch (e) {
-                                console.error("❌ Ses verisi dönüştürme hatası:", e);
+                        case 'clientId':
+                            // Sunucudan gelen client ID'yi sakla
+                            clientId = message.id;
+                            console.log('👤 Sunucudan client ID alındı:', clientId);
+                            if (peerIdDisplay) {
+                                peerIdDisplay.textContent = `ID: ${clientId}`;
                             }
-                        } else {
-                            console.log("⏭️ Ses verisi atlandı - Sebep: " + 
-                                (message.channel != currentChannel ? "Farklı kanal" : "Kendimden gelen ses"));
-                        }
-                        break;
-                        
-                    case 'userCount':
-                        // Kullanıcı sayısını güncelle
-                        updateActiveUsers(message.count, message.channelCounts);
-                        break;
-                        
-                    case 'clientId':
-                        // Sunucudan gelen client ID'yi sakla
-                        clientId = message.id;
-                        console.log('Sunucudan client ID alındı:', clientId);
-                        if (peerIdDisplay) {
-                            peerIdDisplay.textContent = `ID: ${clientId}`;
-                        }
-                        break;
-                        
-                    case 'join':
-                        // Kullanıcı kanalda katıldı
-                        console.log(`Bir kullanıcı ${message.channel} kanalına katıldı.`);
-                        // Kanal kullanıcı sayısını güncelle
-                        if (message.channelUsers) {
-                            usersInChannel = message.channelUsers;
-                            if (usersCountDisplay) {
-                                usersCountDisplay.textContent = `Kullanıcılar: ${usersInChannel}`;
+                            break;
+                            
+                        case 'join':
+                            // Kullanıcı kanalda katıldı
+                            console.log(`👋 Bir kullanıcı ${message.channel} kanalına katıldı.`);
+                            // Kanal kullanıcı sayısını güncelle
+                            if (message.channelUsers) {
+                                usersInChannel = message.channelUsers;
+                                if (usersCountDisplay) {
+                                    usersCountDisplay.textContent = `Kullanıcılar: ${usersInChannel}`;
+                                }
                             }
-                        }
-                        break;
-                        
-                    case 'leave':
-                        // Kullanıcı kanaldan ayrıldı
-                        console.log(`Bir kullanıcı ${message.channel} kanalından ayrıldı.`);
-                        break;
-                        
-                    case 'error':
-                        console.error("Sunucu hatası:", message.message);
-                        alert(`Sunucu hatası: ${message.message}`);
-                        break;
-                        
-                    default:
-                        console.log("Bilinmeyen mesaj türü:", message.type);
+                            break;
+                            
+                        case 'leave':
+                            // Kullanıcı kanaldan ayrıldı
+                            console.log(`👋 Bir kullanıcı ${message.channel} kanalından ayrıldı.`);
+                            break;
+                            
+                        case 'error':
+                            console.error("❌ Sunucu hatası:", message.message);
+                            alert(`Sunucu hatası: ${message.message}`);
+                            break;
+                            
+                        default:
+                            console.log("⚠️ Bilinmeyen mesaj türü:", message.type);
+                    }
+                } catch (jsonError) {
+                    console.warn("⚠️ Mesaj JSON formatında değil:", messageStr);
                 }
-            } catch (jsonError) {
-                console.warn("Mesaj JSON formatında değil:", messageStr);
+            } else {
+                console.warn("⚠️ Beklenmeyen veri türü:", typeof messageStr);
             }
         } catch (error) {
-            console.error("Mesaj işleme hatası:", error);
+            console.error("❌ Mesaj işleme hatası:", error);
         }
     };
+    
+    // JSON formatındaki ses verisini işle
+    function processJsonAudio(message) {
+        console.log("🔊 Ses verisi mesajı alındı - Kanal:", message.channel, "Gönderen:", message.clientId);
+        
+        if (message.channel == currentChannel && message.clientId !== clientId) {
+            console.log("✅ Ses verisi işleniyor - Kanal eşleşti, farklı kullanıcıdan geliyor");
+            console.log("📊 Alınan JSON ses verisi:", {
+                kimden: message.clientId,
+                format: message.format || "belirtilmemiş",
+                kanal: message.channel,
+                veriUzunluğu: message.audioData ? message.audioData.length + " karakter" : "yok", 
+                zamanDamgası: message.timestamp ? new Date(message.timestamp).toISOString() : "belirtilmemiş"
+            });
+            
+            // Veri kontrolü
+            if (!message.audioData || typeof message.audioData !== 'string') {
+                console.error("❌ Geçersiz ses verisi formatı");
+                return;
+            }
+            
+            // Base64 formatındaki ses verisini Blob'a dönüştür
+            try {
+                console.log("🔄 Base64 veriyi Blob'a dönüştürme başlıyor");
+                const binaryAudio = atob(message.audioData);
+                const arrayBuffer = new ArrayBuffer(binaryAudio.length);
+                const uint8Array = new Uint8Array(arrayBuffer);
+                
+                for (let i = 0; i < binaryAudio.length; i++) {
+                    uint8Array[i] = binaryAudio.charCodeAt(i);
+                }
+                
+                // Doğru MIME tipi ile Blob oluştur
+                const mimeType = message.format || 'audio/webm';
+                const audioBlob = new Blob([arrayBuffer], { type: mimeType });
+                console.log("✅ Blob oluşturuldu:", {
+                    boyut: audioBlob.size + " bytes",
+                    tip: audioBlob.type
+                });
+                
+                // Ses boyutunu kontrol et
+                if (audioBlob.size < 100) {
+                    console.warn("⚠️ Ses verisi çok küçük, çalma atlanıyor");
+                    return;
+                }
+                
+                console.log("🔊 Ses çalınıyor...");
+                playAudioFromBlob(audioBlob);
+            } catch (e) {
+                console.error("❌ Ses verisi dönüştürme hatası:", e);
+            }
+        } else {
+            console.log("⏭️ Ses verisi atlandı - Sebep: " + 
+                (message.channel != currentChannel ? "Farklı kanal" : "Kendimden gelen ses"));
+        }
+    }
     
     // Blob formatındaki ses verisini çal - geliştirilmiş ve daha güvenilir
     const playAudioFromBlob = (audioBlob) => {

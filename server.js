@@ -26,54 +26,41 @@ wss.on("connection", function connection(ws) {
 
     ws.on('message', (msg) => {
         try {
-            // Mesaj tipini kontrol et
-            let data;
-            try {
-                // String mesaj kontrolü
-                if (typeof msg === 'string') {
-                    data = JSON.parse(msg);
-                } else {
-                    // Binary veri ise JSON olmayan veri olarak işle
-                    console.log("Binary veri alındı, işlenemiyor.");
-                    return;
+            console.log("Gelen veri türü:", typeof msg, "Buffer mi?", msg instanceof Buffer);
+            
+            // Node.js'de WebSocket mesajı Buffer olarak gelir
+            if (msg instanceof Buffer) {
+                try {
+                    // Buffer'ı string'e çevir ve JSON olarak parse et
+                    const strMsg = msg.toString('utf8');
+                    console.log("Buffer'dan çevrilen string:", strMsg.substring(0, 50) + "...");
+                    
+                    try {
+                        const data = JSON.parse(strMsg);
+                        processJsonMessage(ws, data);
+                    } catch (jsonErr) {
+                        console.error("JSON parse hatası:", jsonErr.message);
+                    }
+                } catch (bufferErr) {
+                    console.error("Buffer dönüştürme hatası:", bufferErr);
                 }
-            } catch (err) {
-                console.error("JSON çözümleme hatası:", err);
-                console.log("Alınan veri türü:", typeof msg, "İçerik başlangıcı:", typeof msg === 'string' ? msg.substring(0, 50) : 'binary');
                 return;
             }
             
-            // JSON mesaj tipini kontrol et
-            switch (data.type) {
-                case 'join':
-                    // Kanal katılım işlemi
-                    handleJoinChannel(ws, data);
-                    break;
-                    
-                case 'leave':
-                    // Kanaldan ayrılma işlemi
-                    handleLeaveChannel(ws, data);
-                    break;
-                    
-                case 'audio':
-                    // Ses verisi tam ve doğru formatta mı kontrol et
-                    if (data.type === 'audio' &&
-                        typeof data.channel === 'string' &&
-                        typeof data.clientId === 'string' &&
-                        typeof data.format === 'string' &&
-                        typeof data.audioData === 'string' &&
-                        typeof data.timestamp === 'number') {
-                        
-                        // Ses verisini işle ve diğer kullanıcılara ilet
-                        handleAudioMessage(ws, data);
-                    } else {
-                        console.error("Geçersiz ses verisi formatı:", data);
-                    }
-                    break;
-                    
-                default:
-                    console.log("Bilinmeyen mesaj türü:", data.type);
+            // String mesaj 
+            if (typeof msg === 'string') {
+                try {
+                    const data = JSON.parse(msg);
+                    processJsonMessage(ws, data);
+                } catch (err) {
+                    console.error("String JSON parse hatası:", err.message);
+                }
+                return;
             }
+            
+            // Diğer tip mesajlar
+            console.log("Beklenmeyen mesaj türü:", typeof msg);
+            
         } catch (error) {
             console.error("Mesaj işleme hatası:", error);
         }
@@ -255,6 +242,41 @@ function broadcastUserCounts() {
         });
     } catch (error) {
         console.error("Kullanıcı sayısı yayınlama hatası:", error);
+    }
+}
+
+// JSON mesajlarını işle
+function processJsonMessage(ws, data) {
+    // Mesaj tipini kontrol et
+    switch (data.type) {
+        case 'join':
+            // Kanal katılım işlemi
+            handleJoinChannel(ws, data);
+            break;
+            
+        case 'leave':
+            // Kanaldan ayrılma işlemi
+            handleLeaveChannel(ws, data);
+            break;
+            
+        case 'audio':
+            // Ses verisi tam ve doğru formatta mı kontrol et
+            if (data.type === 'audio' &&
+                typeof data.channel === 'string' &&
+                typeof data.clientId === 'string' &&
+                typeof data.format === 'string' &&
+                typeof data.audioData === 'string' &&
+                typeof data.timestamp === 'number') {
+                
+                // Ses verisini işle ve diğer kullanıcılara ilet
+                handleAudioMessage(ws, data);
+            } else {
+                console.error("Geçersiz ses verisi formatı:", data);
+            }
+            break;
+            
+        default:
+            console.log("Bilinmeyen mesaj türü:", data.type);
     }
 }
 
