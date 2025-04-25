@@ -8,6 +8,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const channelDownBtn = document.getElementById('channel-down');
     const usersCountDisplay = document.getElementById('users-count');
     const peerIdDisplay = document.getElementById('peer-id');
+    const codeZeroBtn = document.getElementById('code-zero-btn');
     
 
     
@@ -246,6 +247,16 @@ document.addEventListener('DOMContentLoaded', function() {
                         case 'leave':
                             // Kullanıcı kanaldan ayrıldı
                             console.log(`👋 Bir kullanıcı ${message.channel} kanalından ayrıldı.`);
+                            break;
+                            
+                        case 'notification':
+                            // Bildirim mesajı
+                            if (message.notificationType === 'codeZero') {
+                                console.log(`🚨 Kod 0 bildirimi alındı, gönderen: ${message.clientId}`);
+                                
+                                // Bildirim göster
+                                showNotification("KOD 0 ACİL DURUM", `${message.clientId} tarafından KOD 0 acil durum bildirildi!`);
+                            }
                             break;
                             
                         case 'error':
@@ -804,6 +815,9 @@ document.addEventListener('DOMContentLoaded', function() {
             if (channelDownBtn) {
                 channelDownBtn.style.display = 'block';
             }
+            if (codeZeroBtn) {
+                codeZeroBtn.style.display = 'block';
+            }
         } else {
             // Telsiz kapalı durumunda güç ışığını kırmızı yap
             powerIndicator.style.backgroundColor = '#333';
@@ -824,6 +838,9 @@ document.addEventListener('DOMContentLoaded', function() {
             }
             if (channelDownBtn) {
                 channelDownBtn.style.display = 'none';
+            }
+            if (codeZeroBtn) {
+                codeZeroBtn.style.display = 'none';
             }
         }
         
@@ -957,6 +974,76 @@ document.addEventListener('DOMContentLoaded', function() {
         if (mediaRecorder && mediaRecorder.state === 'recording') {
             mediaRecorder.stop();
             console.log("Ses kaydı durduruldu");
+        }
+    };
+    
+    // Kod 0 Bildirimi Gönderme Fonksiyonu
+    const sendCodeZeroNotification = () => {
+        if (!isRadioOn) return;
+        
+        console.log("Kod 0 bildirim isteği gönderiliyor...");
+        
+        // Kullanıcılara bildirim göndermek için önce izin isteyelim
+        if (!("Notification" in window)) {
+            alert("Bu tarayıcı bildirim özelliğini desteklemiyor!");
+        } else if (Notification.permission === "granted") {
+            // Bildirim izni zaten var, bildirim gönder
+            sendNotificationToEveryone();
+        } else if (Notification.permission !== "denied") {
+            // İzin istenmemiş, izin iste
+            Notification.requestPermission().then(permission => {
+                if (permission === "granted") {
+                    sendNotificationToEveryone();
+                }
+            });
+        }
+    };
+    
+    // Tüm kullanıcılara bildirim gönder
+    const sendNotificationToEveryone = () => {
+        // Kendimize bildirim gönderelim
+        showNotification("KOD 0 ACİL DURUM", `${clientId} tarafından KOD 0 acil durum bildirildi!`);
+        
+        // WebSocket üzerinden diğer kullanıcılara bildirim gönder
+        if (socket && socket.readyState === WebSocket.OPEN) {
+            const notificationMessage = {
+                type: 'notification',
+                notificationType: 'codeZero',
+                clientId: clientId,
+                timestamp: Date.now()
+            };
+            
+            socket.send(JSON.stringify(notificationMessage));
+            console.log("✅ Kod 0 bildirimi gönderildi");
+        }
+    };
+    
+    // Bildirim gösterme fonksiyonu
+    const showNotification = (title, message) => {
+        if (!("Notification" in window)) {
+            console.warn("Bu tarayıcı bildirim özelliğini desteklemiyor!");
+            return;
+        }
+        
+        if (Notification.permission === "granted") {
+            // Bildirim göster
+            const notification = new Notification(title, {
+                body: message,
+                icon: "Radio.png", // Bildirim ikonu
+                vibrate: [200, 100, 200, 100, 200, 100, 200], // Titreşim deseni
+                tag: "codeZeroNotification", // Aynı tip bildirimleri gruplar
+                requireInteraction: true // Kullanıcı kapatana kadar açık kalır
+            });
+            
+            // Bildirime tıklama olayı
+            notification.onclick = function() {
+                console.log("Kod 0 bildirimine tıklandı");
+                window.focus();
+                notification.close();
+            };
+            
+            // Sesli uyarı çal
+            beepSound.play();
         }
     };
     
@@ -1095,6 +1182,11 @@ document.addEventListener('DOMContentLoaded', function() {
             // Kaydı durdur
             stopRecording();
         });
+    }
+    
+    // Kod 0 butonu
+    if (codeZeroBtn) {
+        codeZeroBtn.addEventListener('click', sendCodeZeroNotification);
     }
     
     // Sayfa kapatıldığında kaynakları temizle

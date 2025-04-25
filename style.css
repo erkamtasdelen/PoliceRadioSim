@@ -90,9 +90,10 @@ button:active {
 
 .talk-btn {
     bottom: 20%;
-    right: 25%;
-    width: 90px;
-    height: 90px;
+    right: 33%;
+    width: 200px;
+    height: 200px;
+    opacity: 0.5;
     -webkit-tap-highlight-color: transparent;
     user-select: none;
     -webkit-touch-callout: none;
@@ -236,4 +237,48 @@ button:active {
     margin-bottom: 10px;
     line-height: 1.5;
     color: #ccc;
+}
+
+/* Kod 0 Acil Durum Butonu */
+.code-zero-btn {
+    position: absolute;
+    bottom: 20%;
+    left: 25%;
+    width: 90px;
+    height: 90px;
+    background-color: #ff0000;
+    color: white;
+    font-weight: bold;
+    border: 3px solid #aa0000;
+    border-radius: 50%;
+    display: none; /* İlk başta gizli, telsiz açıldığında görünür */
+    z-index: 1000;
+    animation: pulse 2s infinite;
+}
+
+.code-zero-btn:active {
+    background-color: #aa0000;
+    transform: scale(0.95);
+}
+
+@keyframes pulse {
+    0% {
+        box-shadow: 0 0 0 0 rgba(255, 0, 0, 0.7);
+    }
+    70% {
+        box-shadow: 0 0 0 10px rgba(255, 0, 0, 0);
+    }
+    100% {
+        box-shadow: 0 0 0 0 rgba(255, 0, 0, 0);
+    }
+}
+
+@media (max-width: 768px) {
+    .code-zero-btn {
+        width: 120px;
+        height: 120px;
+        bottom: 15%;
+        left: 24%;
+        font-size: 18px;
+    }
 } 

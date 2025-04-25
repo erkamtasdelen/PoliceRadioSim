@@ -198,6 +198,24 @@ function handleAudioMessage(ws, data) {
             }
         });
         
+        // Ses iletim bilgisini tüm kanaldaki kullanıcılara gönder
+        const transmissionInfo = JSON.stringify({
+            type: 'audioTransmission',
+            channel: channel,
+            senderId: senderId,
+            recipientCount: recipientCount,
+            timestamp: Date.now()
+        });
+        
+        wss.clients.forEach(client => {
+            if (client.readyState === WebSocket.OPEN) {
+                const clientInfo = clients.get(client);
+                if (clientInfo && clientInfo.channel === channel) {
+                    client.send(transmissionInfo);
+                }
+            }
+        });
+        
         console.log(`✅ Ses verisi ${recipientCount} kullanıcıya iletildi - Kanal: ${channel}`);
         
         // Hiç kullanıcı yoksa bildir
