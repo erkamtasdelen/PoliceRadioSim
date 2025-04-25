@@ -90,10 +90,9 @@ button:active {
 
 .talk-btn {
     bottom: 20%;
-    right: 33%;
-    width: 200px;
-    height: 200px;
-    opacity: 0.5;
+    right: 25%;
+    width: 90px;
+    height: 90px;
     -webkit-tap-highlight-color: transparent;
     user-select: none;
     -webkit-touch-callout: none;

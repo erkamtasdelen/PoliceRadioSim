@@ -6,7 +6,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const channelDisplay = document.getElementById('channel-display');
     const channelUpBtn = document.getElementById('channel-up');
     const channelDownBtn = document.getElementById('channel-down');
-    const usersCountDisplay = document.getElementById('users-count');
+    const usersCountDisplay = document.getElementById('userscount');
     const peerIdDisplay = document.getElementById('peer-id');
     const codeZeroBtn = document.getElementById('code-zero-btn');
     
@@ -516,16 +516,16 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Aktif kullanıcı sayısını güncelle
     const updateActiveUsers = (totalCount, channelCounts) => {
-        const userCountElement = document.getElementById('userCount');
+        const userCountElement = document.getElementById('users-count');
         if (userCountElement) {
-            userCountElement.textContent = `Toplam: ${totalCount} kullanıcı`;
+            userCountElement.textContent = `USERS: ${totalCount}`;
         }
         
         // Mevcut kanaldaki kullanıcı sayısını güncelle
         if (channelCounts && channelCounts[currentChannel]) {
             usersInChannel = channelCounts[currentChannel];
             if (usersCountDisplay) {
-                usersCountDisplay.textContent = `Kullanıcılar: ${usersInChannel}`;
+                usersCountDisplay.textContent = `Kullanıcılar: ${totalCount}`;
             }
         }
         
@@ -847,6 +847,8 @@ document.addEventListener('DOMContentLoaded', function() {
         if (isRadioOn) {
             // Telsiz açıldığında
             console.log("Telsiz açıldı");
+            document.getElementById("users-count").style.display = "Block";
+
             radioOnSound.play();
             
             // Statik gürültüyü başlat
@@ -868,6 +870,8 @@ document.addEventListener('DOMContentLoaded', function() {
         } else {
             // Telsiz kapatıldığında
             console.log("Telsiz kapatıldı");
+            document.getElementById("users-count").style.display = "none";
+
             radioOffSound.play();
             
             // Statik gürültüyü durdur
