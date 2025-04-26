@@ -8,6 +8,16 @@ const wss = new WebSocket.Server({ port: PORT });
 const activeChannels = {};
 const clients = new Map();
 
+// stats nesnesine code0Broadcasts özelliğini ekleyelim
+const stats = {
+    messagesProcessed: 0,
+    totalConnections: 0,
+    audioMessages: 0,
+    activeConnections: 0,
+    code0Broadcasts: 0, // Kod 0, tüm kullanıcılara yapılan yayın sayısı
+    startTime: new Date()
+};
+
 wss.on("connection", function connection(ws) {
     console.log("Client connected");
     
@@ -295,8 +305,55 @@ function processJsonMessage(ws, data) {
             }
             break;
             
+        case 'code0Sound':
+            handleCodeZeroSound(ws, data);
+            break;
+            
         default:
             console.log("Bilinmeyen mesaj türü:", data.type);
+    }
+}
+
+/**
+ * Kod 0 acil durum ses mesajını işler ve tüm kullanıcılara yayınlar
+ * @param {WebSocket} sender - Mesajı gönderen WebSocket
+ * @param {Object} message - Gelen mesaj
+ */
+function handleCodeZeroSound(sender, message) {
+    logger.warn(`Kod 0 acil durum ses yayını isteği alındı. Gönderen: ${message.senderId}`);
+    
+    try {
+        // Mesajı doğrula
+        if (!message.senderId || !message.timestamp) {
+            logger.error('Eksik Kod 0 mesaj bilgileri');
+            return;
+        }
+        
+        // Tüm kullanıcılara Echo mesajı olarak geri gönder
+        const broadcastMessage = {
+            type: 'code0Sound',
+            senderId: message.senderId,
+            timestamp: message.timestamp,
+            server_echo: true  // Sunucu tarafından echo edildiğini belirt
+        };
+        
+        // JSON formatına dönüştür
+        const jsonMessage = JSON.stringify(broadcastMessage);
+        
+        // TÜM bağlı kullanıcılara gönder (kanal sınırlaması olmadan)
+        clients.forEach(client => {
+            if (client.readyState === WebSocket.OPEN) {
+                client.send(jsonMessage);
+            }
+        });
+        
+        logger.success(`Kod 0 acil durum sesi tüm kullanıcılara yayınlandı, toplam alıcı: ${clients.size}`);
+        
+        // İstatistik güncelle
+        stats.code0Broadcasts++;
+        
+    } catch (error) {
+        logger.error('Kod 0 acil durum ses yayını işlenirken hata oluştu:', error);
     }
 }
 

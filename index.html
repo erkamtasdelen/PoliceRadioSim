@@ -26,6 +26,8 @@
     
     <!-- Web App Manifest -->
     <link rel="manifest" href="manifest.json">
+    <meta name="viewport" content="width=780">
+
     
     <!-- Dokunma davranışını iyileştir -->
     <script>
@@ -39,29 +41,98 @@
         // Görünüme sabitlemek için 300ms dokunma gecikmesini kaldır
         document.documentElement.style.touchAction = 'manipulation';
     </script>
+    
+    <style>
+        html, body {
+            height: 100%;
+            width: 100%;
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background-color: #121212;
+        }
+        
+        .center-container {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            width: 100%;
+            height: 100%;
+            transform-origin: center;
+        }
+    </style>
 </head>
 <body>
-    <div class="radio-wrapper">
-        <img id="radio-img" src="Radio-Without_Background.png" alt="Telsiz">
-        <button id="toggle-btn" class="power-btn">Power</button>
-        <button id="send_code-zero-btn" class="send_code-zero-btn">Send Code 0
-        </button>
+    <div class="center-container">
+        <div class="radio-wrapper">
+            <img id="radio-img" src="Radio-Without_Background.png" alt="Telsiz">
+            <button id="toggle-btn" class="power-btn">Power</button>
+            <button onclick="sendMP3FileToAllUsers()" id="send_code-zero-btn" class="send_code-zero-btn">Send Code 0
+            </button>
 
-        <button id="beep-btn" class="talk-btn" ontouchstart="" unselectable="on">! TALK !</button>
-        
-        <!-- Kanal seçimi ve göstergesi -->
-        <div id="channel-display" class="channel-display">--</div>
-        <button id="channel-up" class="channel-btn channel-up">▲</button>
-        <button id="channel-down" class="channel-btn channel-down">▼</button>
-        
-        <!-- Kod 0 Acil Durum Butonu -->
-        
-        
-        <!-- Debug göstergesi -->
-        <div style="" id="users-count" class="users-count">0</div>
-        
-        <!-- Peer ID göstergesi (debug için) -->
-        <div id="peer-id" class="peer-id">ID: -</div>
+            <button id="beep-btn" class="talk-btn" ontouchstart="" unselectable="on">! TALK !</button>
+            
+            <!-- LCD Ekran -->
+            <div style="position: absolute;" id="lcd-display" class="lcd-display lcd-powered-off">
+                <!-- LCD içindeki göstergeler -->
+                <div class="lcd-indicators">
+                    <div class="lcd-battery">
+                        <div class="battery-icon"></div>
+                    </div>
+                    <div class="lcd-signal">
+                        <div class="signal-icon"></div>
+                    </div>
+                    <div class="lcd-lock">LOCK</div>
+                </div>
+                
+                <!-- Ana ekran -->
+                <div class="lcd-main">
+                    <div id="active-frequency" class="lcd-freq">------- MHz</div>
+                    <div class="lcd-mode">FM NARROW</div>
+                </div>
+                
+                <!-- Durum bilgileri -->
+                <div class="lcd-status">
+                    <div class="lcd-squelch">SQL:5</div>
+                    <div class="lcd-power">HI</div>
+                </div>
+                
+                <!-- Kullanıcı bilgileri -->
+                <div class="lcd-info">
+                    <span id="users-count" class="lcd-users">USERS: 0</span>
+                    <span id="peer-id" class="lcd-id">ID: -</span>
+                    <span id="channel-num" class="lcd-channel">CH: 01</span>
+                </div>
+                
+                <!-- Gizli frekans listesi (görünmez) -->
+                <div class="hidden-frequencies">
+                    <div class="lcd-line" data-freq="145.500">FREQ: 145.500 MHz</div>
+                    <div class="lcd-line" data-freq="146.520">FREQ: 146.520 MHz</div>
+                    <div class="lcd-line" data-freq="147.000">FREQ: 147.000 MHz</div>
+                    <div class="lcd-line" data-freq="145.290">FREQ: 145.290 MHz</div>
+                    <div class="lcd-line" data-freq="146.940">FREQ: 146.940 MHz</div>
+                    <div class="lcd-line" data-freq="146.850">FREQ: 146.850 MHz</div>
+                    <div class="lcd-line" data-freq="145.230">FREQ: 145.230 MHz</div>
+                    <div class="lcd-line" data-freq="146.130">FREQ: 146.130 MHz</div>
+                    <div class="lcd-line" data-freq="147.300">FREQ: 147.300 MHz</div>
+                    <div class="lcd-line" data-freq="145.350">FREQ: 145.350 MHz</div>
+                    <div class="lcd-line" data-freq="146.460">FREQ: 146.460 MHz</div>
+                    <div class="lcd-line" data-freq="145.890">FREQ: 145.890 MHz</div>
+                    <div class="lcd-line" data-freq="146.760">FREQ: 146.760 MHz</div>
+                    <div class="lcd-line" data-freq="147.420">FREQ: 147.420 MHz</div>
+                    <div class="lcd-line" data-freq="145.110">FREQ: 145.110 MHz</div>
+                    <div class="lcd-line" data-freq="146.640">FREQ: 146.640 MHz</div>
+                </div>
+            </div>
+            
+            <!-- Kanal seçimi ve göstergesi -->
+            <div style="opacity: 0;" id="channel-display" class="channel-display">--</div>
+            <button id="channel-up" class="channel-btn channel-up">▲</button>
+            <button id="channel-down" class="channel-btn channel-down">▼</button>
+        </div>
     </div>
     
     <script>
@@ -72,6 +143,204 @@
         
         // iOS'ta dokunma etkinleştir
         document.addEventListener('touchstart', function(){}, {passive: false});
+        
+        // Sayfa yüklendiğinde radio-wrapper'ı odaklama ve zoom fonksiyonu
+        function focusOnRadio() {
+            const centerContainer = document.querySelector('.center-container');
+            const radioWrapper = document.querySelector('.radio-wrapper');
+            
+            // Ekran boyutuna göre ölçeklendirme hesapla
+            const viewportWidth = Math.max(document.documentElement.clientWidth || 0, window.innerWidth || 0);
+            const viewportHeight = Math.max(document.documentElement.clientHeight || 0, window.innerHeight || 0);
+            
+            // Radio wrapper boyutu
+            const radioWidth = radioWrapper.offsetWidth;
+            const radioHeight = radioWrapper.offsetHeight;
+            
+            // Ekrana sığacak zoom oranını hesapla
+            let scaleX = (viewportWidth * 1.15) / radioWidth;
+            let scaleY = (viewportHeight * 1.15) / radioHeight;
+            
+            // En küçük oranı kullan (daha büyük ekranlarda gereksiz zoom olmasın)
+            let scale = Math.min(scaleX, scaleY, 2.2); // maksimum 2.2x zoom
+            
+            // Zoom uygula
+            centerContainer.style.transform = `scale(${scale})`;
+            
+            // Radio wrapper'ı ekranın ortasına yerleştir
+            radioWrapper.style.margin = 'auto';
+        }
+        
+        // Sayfa yüklendiğinde ve boyut değiştiğinde fokus fonksiyonunu çağır
+        window.addEventListener('load', focusOnRadio);
+        window.addEventListener('resize', focusOnRadio);
+        
+        // Telsiz açma/kapama ve frekans değiştirme işlemleri
+        document.addEventListener('DOMContentLoaded', function() {
+            // Elemanlar
+            const powerBtn = document.getElementById('toggle-btn');
+            const lcdDisplay = document.getElementById('lcd-display');
+            const channelUp = document.getElementById('channel-up');
+            const channelDown = document.getElementById('channel-down');
+            const sendCodeZeroBtn = document.getElementById('send_code-zero-btn');
+            const talkBtn = document.getElementById('beep-btn');
+            const frequencyLines = document.querySelectorAll('.lcd-line');
+            const activeFrequency = document.getElementById('active-frequency');
+            const channelNum = document.getElementById('channel-num');
+            
+            // Telsiz durumu
+            let isPoweredOn = false;
+            let currentFrequencyIndex = 0;
+            
+            // LCD açılış animasyonu
+            function lcdStartupAnimation() {
+                lcdDisplay.classList.add('lcd-startup');
+                
+                setTimeout(() => {
+                    lcdDisplay.classList.remove('lcd-startup');
+                    lcdDisplay.classList.add('lcd-on');
+                }, 1500);
+            }
+            
+            // Power tuşuna tıklama
+            powerBtn.addEventListener('click', function() {
+                isPoweredOn = !isPoweredOn;
+                
+                if (isPoweredOn) {
+                    // Telsizi aç
+                    lcdDisplay.classList.remove('lcd-powered-off');
+                    lcdStartupAnimation();
+                    sendCodeZeroBtn.style.display = 'block';
+                    channelUp.style.display = 'flex';
+                    channelDown.style.display = 'flex';
+                    // İlk frekansı seç
+                    setTimeout(() => {
+                        selectFrequency(currentFrequencyIndex);
+                    }, 1600);
+                } else {
+                    // Telsizi kapat
+                    lcdDisplay.classList.remove('lcd-on');
+                    lcdDisplay.classList.add('lcd-off');
+                    
+                    setTimeout(() => {
+                        lcdDisplay.classList.remove('lcd-off');
+                        lcdDisplay.classList.add('lcd-powered-off');
+                    }, 300);
+                    
+                    sendCodeZeroBtn.style.display = 'none';
+                    channelUp.style.display = 'none';
+                    channelDown.style.display = 'none';
+                }
+            });
+            
+            // Frekans seçimi
+            function selectFrequency(index) {
+                if (!isPoweredOn) return;
+                
+                // Frekans bilgisini al
+                const freq = frequencyLines[index].dataset.freq;
+                
+                // Ana ekrandaki frekansı güncelle
+                activeFrequency.textContent = freq + " MHz";
+                
+                // Kanal numarasını güncelle
+                const chNum = (index + 1).toString().padStart(2, '0');
+                channelNum.textContent = "CH: " + chNum;
+                document.getElementById('channel-display').textContent = chNum;
+                
+                // Sinyal simülasyonu
+                simulateSignalStrength();
+                
+                // Frekans değişikliği yapıldığında burada gerekli işlemler yapılabilir
+                console.log('Selected frequency:', freq);
+            }
+            
+            // Sinyal gücü simülasyonu
+            function simulateSignalStrength() {
+                const signalIcon = document.querySelector('.signal-icon');
+                const randomSignal = Math.floor(Math.random() * 5) + 1; // 1-5 arası
+                
+                signalIcon.className = 'signal-icon';
+                signalIcon.classList.add('signal-' + randomSignal);
+            }
+            
+            // Kanal yukarı butonu
+            channelUp.addEventListener('click', function() {
+                if (!isPoweredOn) return;
+                
+                currentFrequencyIndex = (currentFrequencyIndex + 1) % frequencyLines.length;
+                selectFrequency(currentFrequencyIndex);
+            });
+            
+            // Kanal aşağı butonu
+            channelDown.addEventListener('click', function() {
+                if (!isPoweredOn) return;
+                
+                currentFrequencyIndex = (currentFrequencyIndex - 1 + frequencyLines.length) % frequencyLines.length;
+                selectFrequency(currentFrequencyIndex);
+            });
+            
+            // Talk butonuna basılma
+            talkBtn.addEventListener('mousedown', function() {
+                if (!isPoweredOn) return;
+                talkBtn.classList.add('active-talk');
+                simulateTransmitting(true);
+            });
+            
+            talkBtn.addEventListener('mouseup', function() {
+                talkBtn.classList.remove('active-talk');
+                simulateTransmitting(false);
+            });
+            
+            talkBtn.addEventListener('touchstart', function(e) {
+                if (!isPoweredOn) return;
+                talkBtn.classList.add('active-talk');
+                simulateTransmitting(true);
+                e.preventDefault();
+            });
+            
+            talkBtn.addEventListener('touchend', function() {
+                talkBtn.classList.remove('active-talk');
+                simulateTransmitting(false);
+            });
+            
+            // Yayın simülasyonu
+            function simulateTransmitting(isTransmitting) {
+                if (isTransmitting) {
+                    lcdDisplay.classList.add('transmitting');
+                } else {
+                    lcdDisplay.classList.remove('transmitting');
+                }
+            }
+            
+            // Send Code 0 butonu
+            sendCodeZeroBtn.addEventListener('click', function() {
+                if (!isPoweredOn) return;
+                lcdDisplay.classList.add('emergency');
+                setTimeout(() => {
+                    lcdDisplay.classList.remove('emergency');
+                }, 1000);
+            });
+            
+            // Batarya seviyesini simüle et
+            function simulateBattery() {
+                const batteryIcon = document.querySelector('.battery-icon');
+                const randomBattery = Math.floor(Math.random() * 4) + 2; // 2-5 arası (düşük batarya durumunu engelle)
+                
+                batteryIcon.className = 'battery-icon';
+                batteryIcon.classList.add('battery-' + randomBattery);
+            }
+            
+            // Bataryayı periyodik olarak güncelle
+            setInterval(() => {
+                if (isPoweredOn) {
+                    simulateBattery();
+                }
+            }, 30000); // 30 saniyede bir
+            
+            // İlk batarya değerini ayarla
+            simulateBattery();
+        });
     </script>
     
     <script src="script.js"></script>

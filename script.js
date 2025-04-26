@@ -1,69 +1,203 @@
-document.addEventListener('DOMContentLoaded', function() {
-    // HTML elementlerini seçme
-    const radioImg = document.getElementById('radio-img');
-    const toggleBtn = document.getElementById('toggle-btn');
-    const beepBtn = document.getElementById('beep-btn');
-    const channelDisplay = document.getElementById('channel-display');
-    const channelUpBtn = document.getElementById('channel-up');
-    const channelDownBtn = document.getElementById('channel-down');
-    const usersCountDisplay = document.getElementById('userscount');
-    const peerIdDisplay = document.getElementById('peer-id');
-    const codeZeroBtn = document.getElementById('code-zero-btn');
-    
+/**
+ * POLİS TELSİZİ SİMÜLATÖRÜ
+ * --------------------------
+ * Bu script gerçek bir polis telsizini simüle eden web tabanlı bir uygulama oluşturur.
+ * WebSocket ve Web Audio API kullanarak gerçek zamanlı sesli iletişim sağlar.
+ * 
+ * Ana Özellikler:
+ * - 16 farklı kanal arasında geçiş yapabilme
+ * - Gerçek zamanlı sesli iletişim
+ * - Statik parazit sesi simülasyonu
+ * - Acil durum (Kod 0) bildirimleri
+ * - Güç açma/kapatma ve telsiz görsel efektleri
+ * - Kullanıcı sayısı takibi
+ */
 
+// Uygulama başlatma - DOM yüklendikten sonra
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('[SİSTEM] Telsiz uygulaması başlatılıyor...');
     
-    // Ses dosyalarını oluşturma
-    const radioOnSound = new Audio('Radio_On.mp3');
-    const radioOffSound = new Audio('Radio_Off.mp3');
-    const beepSound = new Audio('Beep.wav');
-    
-    // Statik gürültü sesi oluşturma
-    const createStaticNoise = () => {
-        const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-        const noiseNode = audioContext.createScriptProcessor(4096, 1, 1);
-        const gainNode = audioContext.createGain();
-        
-        noiseNode.onaudioprocess = (e) => {
-            const output = e.outputBuffer.getChannelData(0);
-            for (let i = 0; i < output.length; i++) {
-                output[i] = Math.random() * 2 - 1;
+    // Loglama yardımcı fonksiyonu - gelişmiş, renkli konsolda loglama
+    const logger = {
+        info: (message) => {
+            console.log(`%c[BİLGİ] ${message}`, 'color: #0066ff; font-weight: bold;');
+        },
+        success: (message) => {
+            console.log(`%c[BAŞARILI] ${message}`, 'color: #00cc44; font-weight: bold;');
+        },
+        warn: (message) => {
+            console.warn(`%c[UYARI] ${message}`, 'color: #ffcc00; font-weight: bold;');
+        },
+        error: (message, error = null) => {
+            console.error(`%c[HATA] ${message}`, 'color: #ff3300; font-weight: bold;');
+            if (error) {
+                console.error('Hata detayı:', error);
             }
-        };
-        
-        // Gürültü seviyesini daha düşük ayarlıyoruz
-        gainNode.gain.value = 0.01;
-        noiseNode.connect(gainNode);
-        gainNode.connect(audioContext.destination);
-        
-        return {
-            start: () => {
-                gainNode.gain.value = 0.01;
-            },
-            stop: () => {
-                gainNode.gain.value = 0;
-            },
-            setVolume: (vol) => {
-                gainNode.gain.value = vol;
+        },
+        debug: (message, data = null) => {
+            if (data) {
+                console.log(`%c[DEBUG] ${message}`, 'color: #999999;', data);
+            } else {
+                console.log(`%c[DEBUG] ${message}`, 'color: #999999;');
             }
-        };
+        }
     };
     
-    // Telsiz durumu
-    let isRadioOn = false;
-    let currentChannel = 1;
-    let staticNoise = null;
-    let stream = null;
-    let mediaRecorder = null;
-    let usersInChannel = 0;
+    logger.info('Telsiz arayüz elementleri yükleniyor...');
+
+    // HTML elementlerini seçme - DOM elementlerini JavaScript değişkenlerine bağlama
+    const radioImg = document.getElementById('radio-img');               // Telsiz görseli
+    const toggleBtn = document.getElementById('toggle-btn');             // Açma/kapama düğmesi
+    const beepBtn = document.getElementById('beep-btn');                 // Konuşma (PTT) düğmesi
+    const channelDisplay = document.getElementById('channel-display');   // Kanal göstergesi
+    const channelUpBtn = document.getElementById('channel-up');          // Kanal yukarı düğmesi
+    const channelDownBtn = document.getElementById('channel-down');      // Kanal aşağı düğmesi
+    const usersCountDisplay = document.getElementById('users-count');    // Kullanıcı sayısı göstergesi
+    const peerIdDisplay = document.getElementById('peer-id');            // Kullanıcı ID göstergesi
+    const codeZeroBtn = document.getElementById('send_code-zero-btn');   // Acil durum (Kod 0) düğmesi
     
-    // WebSocket değişkenleri
-    let socket = null;
-    let clientId = null;
+    // HTML elementlerinin varlığını kontrol et
+    if (!toggleBtn || !beepBtn) {
+        logger.error('Kritik UI elementleri bulunamadı! Uygulama düzgün çalışmayabilir.');
+    } else {
+        logger.success('Tüm arayüz elementleri başarıyla yüklendi.');
+    }
+
+    // Ses dosyalarını oluşturma - Telsiz efekt sesleri için Audio nesneleri
+    logger.info('Ses dosyaları yükleniyor...');
+    
+    const radioOnSound = new Audio('Radio_On.mp3');         // Telsiz açılış sesi
+    const radioOffSound = new Audio('Radio_Off.mp3');       // Telsiz kapanış sesi
+    const beepSound = new Audio('Beep.wav');                // PTT bip sesi
+    const code0Sound = new Audio('KOD0_SOUND.mp3');         // Kod 0 acil durum sesi
+    
+    // Ses dosyaları yükleme kontrolü
+    Promise.all([
+        new Promise(resolve => {
+            radioOnSound.addEventListener('canplaythrough', resolve);
+            radioOnSound.addEventListener('error', (e) => {
+                logger.error('Açılış sesi yüklenemedi', e);
+                resolve();
+            });
+        }),
+        new Promise(resolve => {
+            radioOffSound.addEventListener('canplaythrough', resolve);
+            radioOffSound.addEventListener('error', (e) => {
+                logger.error('Kapanış sesi yüklenemedi', e);
+                resolve();
+            });
+        }),
+        new Promise(resolve => {
+            beepSound.addEventListener('canplaythrough', resolve);
+            beepSound.addEventListener('error', (e) => {
+                logger.error('Bip sesi yüklenemedi', e);
+                resolve();
+            });
+        }),
+        new Promise(resolve => {
+            code0Sound.addEventListener('canplaythrough', resolve);
+            code0Sound.addEventListener('error', (e) => {
+                logger.error('Kod 0 acil durum sesi yüklenemedi', e);
+                resolve();
+            });
+        })
+    ]).then(() => {
+        logger.success('Ses dosyaları başarıyla yüklendi.');
+    }).catch(err => {
+        logger.warn('Bazı ses dosyaları yüklenemedi, uygulama sesleri eksik olabilir.', err);
+    });
+    
+    // Statik gürültü sesi oluşturma - Web Audio API ile gerçek zamanlı beyaz gürültü üretme
+    const createStaticNoise = () => {
+        logger.debug('Statik gürültü oluşturuluyor...');
+        
+        try {
+            // Web Audio API için context oluşturma
+            const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            
+            // Script processor node ile özel ses üretimi (beyaz gürültü)
+            const noiseNode = audioContext.createScriptProcessor(4096, 1, 1);
+            
+            // Ses seviyesini kontrol etmek için gain node
+            const gainNode = audioContext.createGain();
+            
+            // Beyaz gürültü üretme fonksiyonu
+            noiseNode.onaudioprocess = (e) => {
+                const output = e.outputBuffer.getChannelData(0);
+                for (let i = 0; i < output.length; i++) {
+                    // Her bir ses örneği için -1 ile 1 arasında rastgele değer (beyaz gürültü)
+                    output[i] = Math.random() * 2 - 1;
+                }
+            };
+            
+            // Gürültü seviyesini düşük ayarlama
+            gainNode.gain.value = 0.01; // %1 seviyesinde başlat
+            
+            // Ses yolunu bağlama: noise -> gain -> output
+            noiseNode.connect(gainNode);
+            gainNode.connect(audioContext.destination);
+            
+            logger.success('Statik gürültü modülü başarıyla oluşturuldu.');
+            
+            // Kontrol arayüzü döndür
+            return {
+                // Statik sesi başlatma
+                start: () => {
+                    logger.debug('Statik gürültü başlatıldı');
+                    gainNode.gain.value = 0.01;
+                },
+                
+                // Statik sesi durdurma
+                stop: () => {
+                    logger.debug('Statik gürültü durduruldu');
+                    gainNode.gain.value = 0;
+                },
+                
+                // Statik ses seviyesini ayarlama
+                setVolume: (vol) => {
+                    gainNode.gain.value = vol;
+                    logger.debug(`Statik gürültü seviyesi: ${vol}`);
+                },
+                
+                // Kontexte doğrudan erişim
+                context: audioContext
+            };
+        } catch (error) {
+            logger.error('Statik gürültü oluşturulurken hata!', error);
+            // Başarısız olursa boş bir kontrol nesnesi döndür (null-safe)
+            return {
+                start: () => {},
+                stop: () => {},
+                setVolume: () => {},
+                context: null
+            };
+        }
+    };
+    
+    // Telsiz durumu ve ana değişkenler - uygulama durum değişkenleri
+    let isRadioOn = false;       // Telsizin açık/kapalı durumu
+    let currentChannel = 1;      // Aktif kanal (1-16 arası)
+    let staticNoise = null;      // Statik gürültü kontrolörü
+    let stream = null;           // Mikrofon akışı
+    let mediaRecorder = null;    // Ses kayıt kontrolörü
+    let usersInChannel = 0;      // Mevcut kanaldaki kullanıcı sayısı
+    
+    // WebSocket değişkenleri - sunucu iletişimi
+    let socket = null;           // WebSocket bağlantısı
+    let clientId = null;         // Kullanıcı kimliği
     const serverUrl = 'wss://policeradiosim.onrender.com/'; // WebSocket sunucu URL'i
+    
+    logger.info('Uygulama başlangıç değişkenleri ayarlandı.');
+    logger.debug('Kullanılacak WebSocket sunucusu:', serverUrl);
     
     // Güç ışığı ekleyerek telsizin durumunu görselleştirme
     const createPowerIndicator = () => {
+        logger.debug('Güç göstergesi ışığı oluşturuluyor...');
+        
+        // Yeni div elementi oluştur
         const indicator = document.createElement('div');
+        
+        // CSS sınıfı ve stilleri
         indicator.classList.add('power-indicator');
         indicator.style.position = 'absolute';
         indicator.style.top = '26%';
@@ -71,68 +205,98 @@ document.addEventListener('DOMContentLoaded', function() {
         indicator.style.width = '20px';
         indicator.style.height = '20px';
         indicator.style.borderRadius = '50%';
-        indicator.style.backgroundColor = '#333';
+        indicator.style.backgroundColor = '#333';  // Başlangıçta kapalı (koyu gri)
         indicator.style.boxShadow = '0 0 5px rgba(0, 0, 0, 0.5)';
-        document.querySelector('.radio-wrapper').appendChild(indicator);
+        indicator.style.transition = 'all 0.3s ease'; // Yumuşak geçiş efekti
+        
+        // Telsiz görseli içine ekle
+        const wrapper = document.querySelector('.radio-wrapper');
+        if (wrapper) {
+            wrapper.appendChild(indicator);
+            logger.success('Güç göstergesi başarıyla oluşturuldu.');
+        } else {
+            logger.error('Güç göstergesi eklenemedi - telsiz container bulunamadı!');
+        }
+        
         return indicator;
     };
     
+    // Güç gösterge ışığını oluştur
     const powerIndicator = createPowerIndicator();
     
-    // WebSocket bağlantısı kurma
+    /**
+     * =====================================================
+     * WEBSOCKET BAĞLANTI YÖNETİMİ
+     * =====================================================
+     * Aşağıdaki fonksiyonlar, sunucu ile gerçek zamanlı iletişim için
+     * WebSocket bağlantısının kurulması, yönetilmesi ve mesaj alışverişini sağlar.
+     */
+    
+    // WebSocket bağlantısı kurma - Sunucu ile gerçek zamanlı bağlantı oluşturma
     const connectWebSocket = () => {
         try {
-            console.log("WebSocket bağlantısı kuruluyor...", serverUrl);
+            logger.info(`WebSocket bağlantısı kuruluyor: ${serverUrl}`);
+            
+            // Yeni WebSocket bağlantısı oluşturma
             socket = new WebSocket(serverUrl);
             
+            // Bağlantı kurulduğunda tetiklenir
             socket.onopen = () => {
-                console.log('WebSocket bağlantısı kuruldu');
+                logger.success('WebSocket bağlantısı başarıyla kuruldu');
                 
-                // HTML element kontrolü (null olabilir)
+                // Bağlantı durumunu UI'da gösterme (eğer UI elementi varsa)
                 const connectionStatus = document.getElementById('connectionStatus');
                 if (connectionStatus) {
                     connectionStatus.innerText = 'Bağlı';
                     connectionStatus.className = 'connected';
                 }
                 
-                // Rastgele client ID oluştur
+                // Kullanıcı için benzersiz ID oluşturma
                 clientId = 'client_' + Math.random().toString(36).substring(2, 9);
+                logger.debug(`Benzersiz istemci ID oluşturuldu: ${clientId}`);
                 
+                // Kullanıcı ID'sini gösterge ekranında gösterme
                 if (peerIdDisplay) {
                     peerIdDisplay.textContent = `ID: ${clientId}`;
                     peerIdDisplay.style.display = 'block';
+                    logger.debug('Peer ID ekranda gösterildi');
                 }
                 
-                // Bağlantı kurulduğunda mevcut kanala katıl
+                // Bağlantı kurulduğunda mevcut kanala katılma
                 joinChannel(currentChannel);
+                logger.info(`Otomatik olarak Kanal #${currentChannel}'e katılınıyor...`);
                 
-                // Kullanıcı sayısını göster
+                // Kullanıcı sayısını gösterge ekranında gösterme
                 if (usersCountDisplay) {
-                    usersCountDisplay.textContent = 'Kullanıcılar Aranıyor...';
+                    usersCountDisplay.textContent = 'USERS: ...';
                     usersCountDisplay.style.display = 'block';
+                    logger.debug('Kullanıcı sayısı göstergesi aktifleştirildi');
                 }
             };
             
+            // Bağlantı kapandığında tetiklenir
             socket.onclose = (event) => {
-                console.log('WebSocket bağlantısı kapandı', event);
+                logger.warn(`WebSocket bağlantısı kapandı: Kod: ${event.code}, Sebep: ${event.reason || 'Belirtilmemiş'}`);
                 
-                // HTML element kontrolü
+                // Bağlantı durumunu UI'da güncelleme
                 const connectionStatus = document.getElementById('connectionStatus');
                 if (connectionStatus) {
                     connectionStatus.innerText = 'Bağlantı Kesildi';
                     connectionStatus.className = 'disconnected';
                 }
                 
-                // Eğer telsiz açıksa yeniden bağlanmayı dene
+                // Eğer telsiz açıksa yeniden bağlanmayı deneme
                 if (isRadioOn) {
+                    logger.info('Telsiz açık durumda, 3 saniye içinde yeniden bağlanmayı deneyecek');
                     setTimeout(connectWebSocket, 3000);
                 }
             };
             
+            // Bağlantı hatası oluştuğunda tetiklenir
             socket.onerror = (error) => {
-                console.error('WebSocket hatası:', error);
+                logger.error('WebSocket bağlantı hatası oluştu', error);
                 
-                // HTML element kontrolü
+                // Bağlantı durumunu UI'da gösterme
                 const connectionStatus = document.getElementById('connectionStatus');
                 if (connectionStatus) {
                     connectionStatus.innerText = 'Bağlantı Hatası';
@@ -140,38 +304,58 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
             };
             
+            // Sunucudan mesaj geldiğinde tetiklenir
             socket.onmessage = (event) => {
+                // Özel mesaj işleme fonksiyonunu çağır
                 handleWebSocketMessage(event);
             };
         } catch (error) {
-            console.error("WebSocket bağlantı hatası:", error);
+            logger.error("WebSocket bağlantısı kurulamadı!", error);
             
-            // HTML element kontrolü
+            // Bağlantı durumunu UI'da gösterme
             const connectionStatus = document.getElementById('connectionStatus');
             if (connectionStatus) {
                 connectionStatus.innerText = 'Bağlantı Hatası';
                 connectionStatus.className = 'error';
             }
             
-            // Eğer telsiz açıksa yeniden bağlanmayı dene
+            // Eğer telsiz açıksa yeniden bağlanmayı deneme
             if (isRadioOn) {
+                logger.info('Bağlantı hatası sonrası 3 saniye içinde yeniden bağlanmayı deneyecek');
                 setTimeout(connectWebSocket, 3000);
             }
         }
     };
     
-    // WebSocket üzerinden gelen mesajları işle
+    /**
+     * WebSocket Mesaj İşleme
+     * ----------------------
+     * Sunucudan gelen mesajları türlerine göre işler:
+     * - Ses verileri
+     * - Kullanıcı sayısı güncellemeleri
+     * - Acil durum bildirimleri
+     * - Sistem mesajları
+     */
     const handleWebSocketMessage = async (event) => {
         try {
+            // Performans izleme - mesaj işleme süresi
+            const startTime = performance.now();
+            
             // Gelen veri Blob mu yoksa String mi kontrol et
             if (event.data instanceof Blob) {
+                logger.debug('Blob formatında veri alındı, boyut: ' + event.data.size + ' bytes');
+                
+                // Blob'u metin olarak yorumla, JSON ses verisi olabilir
                 const blobText = await new Response(event.data).text();
                 if (blobText.startsWith('{') && blobText.includes('"type":"audio"')) {
+                    logger.debug('Blob içerisinde JSON ses verisi tespit edildi');
                     const jsonData = JSON.parse(blobText);
                     processJsonAudio(jsonData);
                     return;
                 }
                 
+                // Diğer durumda doğrudan ses verisi olarak çal
+                logger.debug('Ham ses verisi olarak işleniyor');
                 playAudioFromBlob(event.data);
                 return;
             }
@@ -179,76 +363,131 @@ document.addEventListener('DOMContentLoaded', function() {
             // String mesajı kontrol et
             const messageStr = event.data;
             
+            // Hoşgeldin mesajlarını atla
             if (typeof messageStr === 'string' && messageStr.startsWith('Welcome')) {
+                logger.debug('Sunucu hoş geldin mesajı: ' + messageStr);
                 return;
             }
             
-            // JSON mesajı parse et
+            // JSON mesajını parse et
             if (typeof messageStr === 'string') {
                 try {
                     const message = JSON.parse(messageStr);
+                    logger.debug('JSON mesajı alındı, tür: ' + message.type);
                     
+                    // Mesaj türüne göre farklı işlemler
                     switch (message.type) {
                         case 'audio':
+                            // Ses verisi - sunucudan gelen ses verisini işle
+                            logger.debug(`Ses verisi alındı, kanal: ${message.channel}, gönderen: ${message.clientId}`);
                             processJsonAudio(message);
                             break;
                             
+                        // Yeni case: Kod 0 ses echo'su
+                        case 'code0Sound':
+                            // Kod 0 ses yayını geldi, tüm kanallarda çal
+                            logger.warn(`⚠️ KOD 0 ACİL DURUM SESİ: ${message.senderId} tarafından başlatıldı!`);
+                            showNotification("KOD 0 ACİL DURUM", `${message.senderId} tarafından KOD 0 acil durum bildirildi!`);
+                            // Ses dosyasını oynat
+                            playCode0Sound();
+                            break;
+                            
                         case 'userCount':
+                            // Kullanıcı sayısı güncellemesi
+                            logger.info(`Kullanıcı sayısı güncellendi: Toplam: ${message.count} kullanıcı`);
+                            logger.debug('Kanal dağılımı:', message.channelCounts);
                             updateActiveUsers(message.count, message.channelCounts);
                             break;
                             
                         case 'clientId':
+                            // Sunucu tarafından atanan müşteri ID'si
                             clientId = message.id;
+                            logger.info(`Sunucu tarafından atanan ID: ${clientId}`);
                             if (peerIdDisplay) {
                                 peerIdDisplay.textContent = `ID: ${clientId}`;
                             }
                             break;
                             
                         case 'join':
+                            // Kanal katılım bilgisi
                             if (message.channelUsers) {
                                 usersInChannel = message.channelUsers;
+                                logger.info(`Kanal ${message.channel || currentChannel} katılım: ${usersInChannel} kullanıcı`);
                                 if (usersCountDisplay) {
-                                    usersCountDisplay.textContent = `Kullanıcılar: ${usersInChannel}`;
+                                    usersCountDisplay.textContent = `USERS: ${usersInChannel}`;
                                 }
                             }
                             break;
                             
                         case 'notification':
+                            // Bildirim mesajı
                             if (message.notificationType === 'codeZero') {
+                                logger.warn(`⚠️ KOD 0 ACİL DURUM: ${message.clientId} tarafından bildirdi!`);
                                 showNotification("KOD 0 ACİL DURUM", `${message.clientId} tarafından KOD 0 acil durum bildirildi!`);
                             }
                             break;
                             
                         case 'error':
+                            // Hata mesajı
+                            logger.error(`Sunucu hatası: ${message.message}`);
                             alert(`Sunucu hatası: ${message.message}`);
                             break;
+                            
+                        default:
+                            // Bilinmeyen mesaj türü
+                            logger.warn(`Bilinmeyen mesaj türü: ${message.type}`);
                     }
                 } catch (jsonError) {
-                    console.warn("Mesaj JSON formatında değil:", messageStr);
+                    logger.warn("Mesaj JSON formatında değil veya parse edilemiyor", jsonError);
+                    logger.debug("Ham mesaj içeriği:", messageStr);
                 }
             }
+            
+            // Performans ölçümünü bitir
+            const processingTime = performance.now() - startTime;
+            if (processingTime > 50) {  // 50ms'den uzun süren işlemleri logla
+                logger.warn(`WebSocket mesaj işleme süresi uzun: ${processingTime.toFixed(2)}ms`);
+            }
         } catch (error) {
-            console.error("Mesaj işleme hatası:", error);
+            logger.error("WebSocket mesaj işleme sırasında genel hata oluştu!", error);
         }
     };
     
-    // processJsonAudio fonksiyonuna bir kilit mekanizması ekleyelim
-    let isCurrentlyPlayingAudio = false;
-    let audioPlaybackQueue = [];
-    let audioHistory = []; // Son çalınan ses dosyalarının kimliklerini saklamak için
-    const MAX_HISTORY_SIZE = 20; // Saklanan geçmiş kayıt sayısı - iPhone tekrar sorunları için arttırıldı
-    const DUPLICATE_TIME_THRESHOLD = 5000; // iOS'taki tekrar algılama için zaman eşiği (ms) - iPhone için 5 saniye
-    const SIZE_SIMILARITY_THRESHOLD = 300; // İki ses dosyasının benzer kabul edilmesi için maksimum boyut farkı (bytes)
+    /**
+     * =====================================================
+     * SES VERİSİ İŞLEME VE ÇALMA
+     * =====================================================
+     * Aşağıdaki fonksiyonlar ses verilerinin işlenmesi, duplikasyon
+     * kontrolü ve çalınması için gerekli mantığı içerir.
+     */
+    
+    // Ses verisi işleme ve duplikasyon kontrolü için değişkenler
+    let isCurrentlyPlayingAudio = false;             // Şu anda ses çalınıyor mu?
+    let audioPlaybackQueue = [];                     // Çalınacak ses dosyaları kuyruğu
+    let audioHistory = [];                           // Son çalınan ses dosyalarının geçmişi
+    const MAX_HISTORY_SIZE = 20;                     // Saklanan geçmiş kayıt sayısı
+    const DUPLICATE_TIME_THRESHOLD = 5000;           // Duplike ses algılama zaman eşiği (ms)
+    const SIZE_SIMILARITY_THRESHOLD = 300;           // Benzer ses boyutu eşiği (bytes)
 
+    /**
+     * JSON Audio İşleme
+     * -----------------
+     * Sunucudan gelen ses verilerini ayrıştırır, duplikasyon kontrolü yapar
+     * ve çalma kuyruğuna ekler.
+     */
     function processJsonAudio(message) {
         if (message.channel == currentChannel && message.clientId !== clientId) {
             // Veri kontrolü
             if (!message.audioData || typeof message.audioData !== 'string') {
+                logger.warn("Geçersiz ses verisi formatı, işlem atlanıyor.");
                 return;
             }
             
             // Ses verisi işleme
             try {
+                logger.debug(`Ses verisi işleniyor: Kanal #${message.channel}, Gönderen: ${message.clientId}`);
+                
+                // Base64 kodlu ses verisini ikili (binary) formata dönüştür
                 const binaryAudio = atob(message.audioData);
                 const arrayBuffer = new ArrayBuffer(binaryAudio.length);
                 const uint8Array = new Uint8Array(arrayBuffer);
@@ -261,13 +500,15 @@ document.addEventListener('DOMContentLoaded', function() {
                 const mimeType = message.format || 'audio/webm';
                 const audioBlob = new Blob([arrayBuffer], { type: mimeType });
                 
-                // Ses boyutunu kontrol et
+                // Ses boyutunu kontrol et (çok küçük ses verilerini atla)
                 if (audioBlob.size < 100) {
+                    logger.warn("Ses verisi çok küçük, muhtemelen boş: " + audioBlob.size + " bytes");
                     return;
                 }
                 
                 // Ses verisi kimliği oluştur (gönderen+zaman bilgisiyle)
                 const audioId = `${message.clientId}_${message.timestamp || Date.now()}`;
+                logger.debug(`Ses kimliği oluşturuldu: ${audioId}, boyut: ${audioBlob.size} bytes, format: ${mimeType}`);
                 
                 // Ek bilgilerle birlikte ses verisini kuyruğa ekle
                 queueAudioPlayback(audioBlob, audioId, {
@@ -276,13 +517,40 @@ document.addEventListener('DOMContentLoaded', function() {
                     dataLength: message.audioData.length
                 });
             } catch (e) {
-                console.error("Ses verisi dönüştürme hatası:", e);
+                logger.error("Ses verisi dönüştürme hatası:", e);
             }
         }
     }
 
-    // Ses çalma kuyruğunu yönet
+    function sendMP3FileToAllUsers() {
+        fetch("KOD0_SOUND.mp3")
+            .then(response => response.blob())
+            .then(blob => {
+                // MP3 için MIME tipini ayarla
+                const mp3Blob = new Blob([blob], { type: 'audio/mp3' });
+                
+                // Doğrudan gönder veya normalize et (önerilen)
+                // normalizeAudioFormat(mp3Blob, currentChannel);
+                
+                // Alternatif olarak doğrudan gönderilebilir
+                sendAudioData(mp3Blob, currentChannel);
+            })
+            .catch(error => {
+                console.error("MP3 dosyası yüklenirken hata oluştu:", error);
+            });
+    }
+
+    /**
+     * Ses Çalma Kuyruğu Yönetimi
+     * ---------------------------
+     * Ses verilerini bir kuyruğa ekler, duplikasyon kontrolü yapar ve
+     * sırayla çalınmasını sağlar. iOS cihazlarda oluşabilecek tekrar
+     * sorunlarına karşı özel kontroller içerir.
+     */
     function queueAudioPlayback(audioBlob, audioId, metadata = {}) {
+        // Performans izleme başlat
+        const queueStart = performance.now();
+        
         // iOS'taki ses duplikasyonunu çözmek için ek kontroller
         const [clientId, timestamp] = audioId.split('_');
         const currentTime = Date.now();
@@ -292,7 +560,7 @@ document.addEventListener('DOMContentLoaded', function() {
                              audioHistory.some(item => item.id === audioId);
         
         if (isDuplicateId) {
-            console.log("Birebir aynı ses zaten işlenmiş, atlanıyor");
+            logger.warn(`Ses duplikasyonu engellendi: ${audioId} - Tam eşleşme`);
             return;
         }
         
@@ -300,18 +568,20 @@ document.addEventListener('DOMContentLoaded', function() {
         const hasSimilarRecentAudio = audioHistory.some(history => {
             // Aynı gönderen mi?
             if (history.clientId === clientId) {
-                // Yakın zamanlı mı? (3 saniye içinde)
+                // Yakın zamanlı mı? (5 saniye içinde)
                 const timeDiff = Math.abs(currentTime - history.time);
                 if (timeDiff < DUPLICATE_TIME_THRESHOLD) {
                     // Ya aynı boyutlu ses dosyası veya benzer boyutlu ses dosyası mı?
                     const sizeDiff = Math.abs(history.size - audioBlob.size);
                     if (sizeDiff < SIZE_SIMILARITY_THRESHOLD) {
+                        logger.debug(`iOS ses duplikasyonu engellendi: Aynı gönderen (${clientId}), zaman farkı ${timeDiff}ms, boyut farkı ${sizeDiff} bytes`);
                         return true; // iOS tekrarı olabilir
                     }
                     
                     // Ya da ikisi de tam olarak aynı uzunlukta veri içeriyor mu?
                     if (metadata.dataLength && history.dataLength &&
                         metadata.dataLength === history.dataLength) {
+                        logger.debug(`Ses duplikasyonu engellendi: Aynı uzunlukta veri (${metadata.dataLength} bytes)`);
                         return true; // Duplike ses verisi
                     }
                 }
@@ -320,8 +590,14 @@ document.addEventListener('DOMContentLoaded', function() {
         });
         
         if (hasSimilarRecentAudio) {
-            console.log("iPhone ses tekrarı algılandı - atlanıyor");
+            logger.warn(`Ses duplikasyonu engellendi: ${audioId} - Benzer içerik`);
             return;
+        }
+        
+        // Performans ölçümü - duplikasyon kontrolü
+        const dupCheckTime = performance.now() - queueStart;
+        if (dupCheckTime > 20) {
+            logger.warn(`Duplikasyon kontrolü yavaş: ${dupCheckTime.toFixed(2)}ms`);
         }
         
         // Ses geçmişini güncelle
@@ -344,26 +620,47 @@ document.addEventListener('DOMContentLoaded', function() {
             clientId: clientId
         });
         
+        logger.debug(`Ses kuyruğa eklendi. Şu anda kuyrukta ${audioPlaybackQueue.length} ses var.`);
+        
         // Kuyruk işleme
         processAudioQueue();
     }
     
-    // Ses geçmişini temizle
+    /**
+     * Ses Geçmişi Temizleme
+     * ---------------------
+     * Eski ses kayıtlarını geçmiş listesinden temizler.
+     * Bu, hafıza kullanımını azaltır ve duplikasyon kontrolünü hızlandırır.
+     */
     function cleanupAudioHistory(currentTime) {
         // 10 saniyeden eski kayıtları temizle
         const oldestTime = currentTime - 10000; 
+        const initialLength = audioHistory.length;
         audioHistory = audioHistory.filter(record => record.time > oldestTime);
+        
+        // Eğer çok kayıt silindiyse log yap
+        if (initialLength - audioHistory.length > 5) {
+            logger.debug(`Ses geçmişinden ${initialLength - audioHistory.length} eski kayıt temizlendi.`);
+        }
         
         // Yine de çok fazla kayıt varsa en eskileri çıkar
         if (audioHistory.length > MAX_HISTORY_SIZE) {
+            const removedCount = audioHistory.length - MAX_HISTORY_SIZE;
             audioHistory = audioHistory.slice(-MAX_HISTORY_SIZE);
+            logger.debug(`Maksimum geçmiş boyutu aşıldı, ${removedCount} eski kayıt kaldırıldı.`);
         }
     }
 
-    // Kuyruktaki ses dosyalarını sırayla çal
+    /**
+     * Ses Kuyruğu İşleme
+     * ------------------
+     * Kuyruktaki ses dosyalarını sırayla ve birbiri ardına çalar.
+     * Kilitleme mekanizması sayesinde sesler üst üste binmez.
+     */
     function processAudioQueue() {
         // Halihazırda ses çalınıyorsa bekle
         if (isCurrentlyPlayingAudio) {
+            logger.debug("Başka bir ses çalınıyor, kuyruk bekletiliyor.");
             return;
         }
         
@@ -374,6 +671,7 @@ document.addEventListener('DOMContentLoaded', function() {
         
         // Kuyruktaki ilk ses verisini al
         const nextAudio = audioPlaybackQueue.shift();
+        logger.debug(`Kuyruktan ses çalınıyor: ${nextAudio.id}`);
         
         // Çalma kilidi
         isCurrentlyPlayingAudio = true;
@@ -381,6 +679,7 @@ document.addEventListener('DOMContentLoaded', function() {
         // Sesi çal
         playAudioFromBlob(nextAudio.blob, () => {
             // Çalma tamamlandı, kilidi kaldır ve sonraki sesi çal
+            logger.debug(`Ses çalma tamamlandı: ${nextAudio.id}`);
             isCurrentlyPlayingAudio = false;
             setTimeout(() => {
                 processAudioQueue();
@@ -388,9 +687,15 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
-    // Blob formatındaki ses verisini çal - geliştirilmiş kilit sistemi
+    /**
+     * Blob'dan Ses Çalma
+     * ------------------
+     * Blob formatındaki ses verisini çalmak için ana fonksiyon.
+     * Önce bip sesi çalar, ardından asıl ses verisini oynatır.
+     */
     const playAudioFromBlob = (audioBlob, onComplete) => {
         if (!isRadioOn) {
+            logger.debug("Telsiz kapalı, ses çalınmıyor.");
             isCurrentlyPlayingAudio = false;
             if (onComplete) onComplete();
             return;
@@ -398,8 +703,9 @@ document.addEventListener('DOMContentLoaded', function() {
         
         try {
             // Bip sesi çal
+            logger.debug("Ses çalmadan önce bip sesi çalınıyor");
             beepSound.play().catch(err => {
-                console.log("Bip sesi hatası:", err);
+                logger.warn("Bip sesi çalma hatası:", err);
             }).finally(() => {
                 // Bip sesi çalsa da çalmasa da ses verisini çalmaya devam et
                 setTimeout(() => {
@@ -408,14 +714,21 @@ document.addEventListener('DOMContentLoaded', function() {
             });
         } catch (error) {
             // Hata olsa bile ses verisini çalmayı dene
+            logger.error("Bip sesi genel hatası, doğrudan sese geçiliyor", error);
             playSoundData(audioBlob, onComplete);
         }
     };
 
-    // Gerçek ses verisini çalma - geri çağrı (callback) eklenmiş
+    /**
+     * Gerçek Ses Verisini Çalma
+     * -------------------------
+     * Ham ses verisini çalmak için farklı yöntemler dener.
+     * Başarısız olursa alternatif çalma yöntemlerine geçiş yapar.
+     */
     const playSoundData = (audioBlob, onComplete) => {
         // Blob boyutu kontrol et
         if (!audioBlob || audioBlob.size === 0) {
+            logger.warn("Geçersiz veya boş ses dosyası, çalma atlanıyor");
             if (onComplete) onComplete();
             return;
         }
@@ -423,11 +736,13 @@ document.addEventListener('DOMContentLoaded', function() {
         // Blob türünü kontrol et ve düzelt
         let correctBlob = audioBlob;
         if (audioBlob.type !== 'audio/webm' && audioBlob.type !== 'audio/mp3' && audioBlob.type !== 'audio/wav') {
+            logger.debug(`Bilinmeyen ses format türü: ${audioBlob.type}, audio/webm olarak varsayılıyor`);
             correctBlob = new Blob([audioBlob], { type: 'audio/webm' });
         }
         
         // 1. Yöntem: Audio elementi ile çalma
         try {
+            logger.debug(`Ses çalınıyor (HTML5 Audio): Boyut: ${correctBlob.size} bytes, Format: ${correctBlob.type}`);
             const audioUrl = URL.createObjectURL(correctBlob);
             const audio = new Audio();
             
@@ -437,30 +752,36 @@ document.addEventListener('DOMContentLoaded', function() {
                 // Ses verisini doğrudan oynatma
                 if (!playAttempted) {
                     playAttempted = true;
+                    logger.debug("Ses çalmaya hazır, başlatılıyor");
                     audio.play()
                         .then(() => {
                             // Statik sesi kıs
                             if (staticNoise) {
                                 staticNoise.setVolume(0.001);
+                                logger.debug("Statik gürültü ses seviyesi konuşma için kısıldı");
                             }
                         })
                         .catch(err => {
                             // Method 2 ile dene
+                            logger.warn("HTML5 Audio çalma başarısız, Web Audio API deneniyor", err);
                             playWithAudioContext(correctBlob, onComplete);
                         });
                 }
             };
             
             audio.onended = () => {
+                logger.debug("Ses çalma tamamlandı");
                 URL.revokeObjectURL(audioUrl);
                 // Statik sesi normale döndür
                 if (staticNoise) {
                     staticNoise.setVolume(0.01);
+                    logger.debug("Statik gürültü ses seviyesi normale döndürüldü");
                 }
                 if (onComplete) onComplete();
             };
             
-            audio.onerror = () => {
+            audio.onerror = (e) => {
+                logger.error(`Ses çalma hatası: ${audio.error?.message || 'Bilinmeyen hata'}`, e);
                 URL.revokeObjectURL(audioUrl);
                 // Alternatif yöntem ile dene
                 playWithAudioContext(correctBlob, onComplete);
@@ -473,19 +794,27 @@ document.addEventListener('DOMContentLoaded', function() {
             // Belirli bir süre içinde çalamazsa, alternatif yöntemi kullan
             setTimeout(() => {
                 if (!playAttempted) {
+                    logger.warn("Ses çalma zaman aşımı (2 saniye), Web Audio API deneniyor");
                     playWithAudioContext(correctBlob, onComplete);
                     URL.revokeObjectURL(audioUrl);
                 }
             }, 2000);
         } catch (error) {
             // Alternatif yöntem dene
+            logger.error("HTML5 Audio çalma hatası, Web Audio API deneniyor", error);
             playWithAudioContext(correctBlob, onComplete);
         }
     };
 
-    // 2. Yöntem: Web Audio API kullanarak ses çalma - geri çağrı eklenmiş
+    /**
+     * Web Audio API ile Ses Çalma (Alternatif Yöntem)
+     * ----------------------------------------------
+     * HTML5 Audio başarısız olursa, Web Audio API ile ses çalmayı dener.
+     * Daha düşük seviyeli ve daha güvenilir bir yaklaşımdır.
+     */
     const playWithAudioContext = (blob, onComplete) => {
         try {
+            logger.debug("Web Audio API ile ses çalma deneniyor...");
             const audioContext = new (window.AudioContext || window.webkitAudioContext)();
             const fileReader = new FileReader();
             
@@ -494,6 +823,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 
                 audioContext.decodeAudioData(arrayBuffer)
                     .then(audioBuffer => {
+                        logger.debug("Ses verisi başarıyla decode edildi, çalınıyor");
                         // Statik sesi kıs
                         if (staticNoise) {
                             staticNoise.setVolume(0.001);
@@ -505,6 +835,7 @@ document.addEventListener('DOMContentLoaded', function() {
                         
                         // Ses bittiğinde
                         source.onended = () => {
+                            logger.debug("Web Audio API ses çalma tamamlandı");
                             // Statik sesi normale döndür
                             if (staticNoise) {
                                 staticNoise.setVolume(0.01);
@@ -516,17 +847,20 @@ document.addEventListener('DOMContentLoaded', function() {
                         source.connect(audioContext.destination);
                         source.start(0);
                     })
-                    .catch(() => {
+                    .catch((err) => {
+                        logger.error("Ses decode etme hatası", err);
                         if (onComplete) onComplete();
                     });
             };
             
-            fileReader.onerror = () => {
+            fileReader.onerror = (error) => {
+                logger.error("FileReader hatası", error);
                 if (onComplete) onComplete();
             };
             
             fileReader.readAsArrayBuffer(blob);
         } catch (error) {
+            logger.error("Web Audio API ile ses çalma hatası", error);
             if (onComplete) onComplete();
         }
     };
@@ -536,14 +870,13 @@ document.addEventListener('DOMContentLoaded', function() {
         const userCountElement = document.getElementById('users-count');
         if (userCountElement) {
             userCountElement.textContent = `USERS: ${totalCount}`;
+            logger.debug(`Toplam kullanıcı sayısı güncellendi: ${totalCount}`);
         }
         
         // Mevcut kanaldaki kullanıcı sayısını güncelle
         if (channelCounts && channelCounts[currentChannel]) {
             usersInChannel = channelCounts[currentChannel];
-            if (usersCountDisplay) {
-                usersCountDisplay.textContent = `Kullanıcılar: ${totalCount}`;
-            }
+            logger.debug(`Kanal #${currentChannel} kullanıcı sayısı: ${usersInChannel}`);
         }
         
         const channelCountElement = document.getElementById('channelCount');
@@ -556,59 +889,69 @@ document.addEventListener('DOMContentLoaded', function() {
             }
             
             channelCountElement.innerHTML = channelText;
+            logger.debug('Kanal kullanıcı dağılımı güncellendi');
         }
     };
     
+    /**
+     * =====================================================
+     * MİKROFON VE SES KAYIT YÖNETİMİ
+     * =====================================================
+     * Aşağıdaki fonksiyonlar, mikrofondan ses kaydı alınması ve
+     * WebSocket üzerinden diğer kullanıcılara gönderilmesini sağlar.
+     */
+    
     // Mikrofon erişimi için izin iste ve MediaRecorder ayarla
     const requestMicrophoneAccess = async () => {
-        console.log("Mikrofon erişimi isteniyor...");
+        logger.info("Mikrofon erişimi isteniyor...");
         try {
+            // Kullanıcıdan mikrofon erişim izni iste
             stream = await navigator.mediaDevices.getUserMedia({ 
                 audio: {
-                    echoCancellation: true,
-                    noiseSuppression: true,
-                    autoGainControl: true,
-                    sampleRate: 44100,
-                    channelCount: 1
+                    echoCancellation: true,    // Yankı engelleme
+                    noiseSuppression: true,    // Gürültü bastırma
+                    autoGainControl: true,     // Otomatik kazanç kontrolü
+                    sampleRate: 44100,         // 44.1kHz örnekleme hızı
+                    channelCount: 1            // Mono ses
                 }
             });
-            console.log('Mikrofon erişimi başarılı');
+            logger.success('Mikrofon erişimi başarıyla alındı');
             
-            // MediaRecorder oluştur (farklı format seçenekleri dene)
+            // MediaRecorder oluştur (farklı tarayıcıların desteklediği format seçenekleri dene)
             let options;
             let recorderCreated = false;
             
-            // WebM formatını dene
+            // WebM formatını dene (en yaygın desteklenen)
             try {
                 options = { mimeType: 'audio/webm;codecs=opus', audioBitsPerSecond: 32000 };
                 mediaRecorder = new MediaRecorder(stream, options);
                 recorderCreated = true;
-                console.log("MediaRecorder WebM/Opus formatında oluşturuldu");
+                logger.success("MediaRecorder WebM/Opus formatında başarıyla oluşturuldu");
             } catch (e) {
-                console.warn("WebM/Opus desteklenmiyor, alternatif deneniyor");
+                logger.warn("WebM/Opus codec'i desteklenmiyor, alternatif deneniyor", e);
             }
             
-            // Alternatif: Sadece WebM dene
+            // Alternatif: Sadece WebM dene (codec belirtmeden)
             if (!recorderCreated) {
                 try {
                     options = { mimeType: 'audio/webm', audioBitsPerSecond: 32000 };
                     mediaRecorder = new MediaRecorder(stream, options);
                     recorderCreated = true;
-                    console.log("MediaRecorder WebM formatında oluşturuldu");
+                    logger.success("MediaRecorder genel WebM formatında başarıyla oluşturuldu");
                 } catch (e) {
-                    console.warn("WebM desteklenmiyor, alternatif deneniyor");
+                    logger.warn("WebM formatı desteklenmiyor, alternatif deneniyor", e);
                 }
             }
             
-            // Alternatif: MP3 dene (bazı tarayıcılar desktekler)
+            // Alternatif: MP3 dene (bazı tarayıcılar destekler)
             if (!recorderCreated) {
                 try {
                     options = { mimeType: 'audio/mp3', audioBitsPerSecond: 32000 };
                     mediaRecorder = new MediaRecorder(stream, options);
                     recorderCreated = true;
-                    console.log("MediaRecorder MP3 formatında oluşturuldu");
+                    logger.success("MediaRecorder MP3 formatında başarıyla oluşturuldu");
                 } catch (e) {
-                    console.warn("MP3 desteklenmiyor, varsayılan kullanılacak");
+                    logger.warn("MP3 formatı desteklenmiyor, varsayılan format kullanılacak", e);
                 }
             }
             
@@ -616,196 +959,245 @@ document.addEventListener('DOMContentLoaded', function() {
             if (!recorderCreated) {
                 try {
                     mediaRecorder = new MediaRecorder(stream);
-                    console.log("MediaRecorder varsayılan formatta oluşturuldu:", mediaRecorder.mimeType);
+                    logger.success(`MediaRecorder varsayılan formatta oluşturuldu: ${mediaRecorder.mimeType}`);
                     recorderCreated = true;
                 } catch (e) {
-                    console.error("MediaRecorder oluşturulamadı:", e);
+                    logger.error("MediaRecorder oluşturulamadı, ses kaydı çalışmayacak", e);
                     alert("Ses kaydedici oluşturulamadı. Tarayıcınız desteklemeyebilir.");
                     return false;
                 }
             }
             
+            // Kaydedilen ses parçalarını toplamak için dizi
             let audioChunks = [];
             
+            // Ses verisi geldiğinde çalışacak fonksiyon
             mediaRecorder.ondataavailable = (event) => {
                 if (event.data.size > 0) {
-                    console.log("Ses verisi parçası alındı, boyut:", event.data.size);
+                    logger.debug(`Ses parçası alındı: ${event.data.size} bytes`);
                     audioChunks.push(event.data);
                 } else {
-                    console.warn("Boş ses verisi parçası, atlanıyor");
+                    logger.warn("Boş ses parçası alındı, kaydedilmiyor");
                 }
             };
             
+            // Kayıt durdurulduğunda çalışacak fonksiyon
             mediaRecorder.onstop = () => {
-                console.log("Ses kaydı durduruldu");
+                logger.debug("Ses kaydı durduruldu, işleniyor...");
                 
+                // Ses parçalarının varlığını kontrol et
                 if (audioChunks.length === 0) {
-                    console.warn("Ses verisi yok, gönderilmiyor");
+                    logger.warn("İşlenecek ses verisi bulunamadı");
                     return;
                 }
                 
-                // Ses verisini bir Blob olarak al
+                // Tüm ses parçalarını birleştirerek bir Blob oluştur
                 const mimeType = mediaRecorder.mimeType || 'audio/webm';
                 const audioBlob = new Blob(audioChunks, { type: mimeType });
                 
-                // Blob boyutunu kontrol et
+                // Blob boyutunu kontrol et (çok küçük verileri gönderme)
                 if (audioBlob.size < 1000) {
-                    console.warn("Ses verisi çok küçük, muhtemelen kayıt başarısız");
+                    logger.warn(`Ses verisi çok küçük (${audioBlob.size} bytes), muhtemelen kayıt başarısız oldu`);
                     audioChunks = [];
                     return;
                 }
                 
-                // Herhangi bir audio oynatıcı içerisinde çalınabilecek formata getir
+                logger.debug(`Ses verisi işlenmeye hazır: ${audioBlob.size} bytes, format: ${mimeType}`);
+                
+                // Ses formatını düzenle ve gönder
                 normalizeAudioFormat(audioBlob, currentChannel);
                 
-                // Ses parçalarını temizle
+                // Ses parçalarını temizle (bellek kullanımını azalt)
                 audioChunks = [];
             };
             
             return true;
         } catch (error) {
-            console.error('Mikrofon erişimi hatası:', error);
-            alert('Mikrofon erişimi sağlanamadı. Lütfen izinleri kontrol edin. Hata: ' + error.message);
+            logger.error('Mikrofon erişimi sağlanamadı', error);
+            alert('Mikrofon erişimi sağlanamadı. Lütfen tarayıcı izinlerini kontrol edin. Hata: ' + error.message);
             return false;
         }
     };
     
-    // Ses formatını normalleştir ve gönder
+    /**
+     * Ses Formatını Normalleştirme ve Gönderme
+     * ---------------------------------------
+     * Kaydedilen ses verisini sunucuya gönderilmeye uygun hale getirir
+     * ve WebSocket üzerinden diğer kullanıcılara gönderir.
+     */
     const normalizeAudioFormat = (audioBlob, channelNumber) => {
         // Blob boyutu kontrolü
         if (!audioBlob || audioBlob.size < 1000) {
-            console.error("Geçersiz ses verisi");
+            logger.error(`Geçersiz ses verisi: ${audioBlob?.size || 0} bytes`);
             return;
         }
         
+        logger.debug(`Ses verisi normalleştiriliyor: Kanal #${channelNumber}, ${audioBlob.size} bytes`);
+        
         try {
-            // Web Audio API ile ses verisini işle
+            // Web Audio API ile ses verisini işle ve doğrula
             const fileReader = new FileReader();
             fileReader.onload = (event) => {
                 try {
                     const arrayBuffer = event.target.result;
                     
-                    // Web Audio API ile ses verisini işle
+                    // Web Audio API ile ses verisini işle ve doğrula
                     const audioContext = new (window.AudioContext || window.webkitAudioContext)();
                     
                     audioContext.decodeAudioData(arrayBuffer).then(() => {
-                        // İşlenmiş ses verisini gönder
+                        // İşlenmiş ses verisi başarıyla doğrulandı, gönder
+                        logger.debug("Ses doğrulaması başarılı, veri gönderiliyor");
                         sendAudioData(audioBlob, channelNumber);
-                    }).catch(() => {
-                        // Hata durumunda ham veriyi gönder
+                    }).catch((err) => {
+                        // Ses verisi doğrulanamadı ama yine de göndermeyi dene
+                        logger.warn("Ses doğrulama hatası, yine de gönderiliyor", err);
                         sendAudioData(audioBlob, channelNumber);
                     });
                 } catch (e) {
-                    // Hata durumunda ham veriyi gönder
+                    // Hata durumunda ham veriyi göndermeyi dene
+                    logger.warn("Ses işleme hatası, ham veri gönderiliyor", e);
                     sendAudioData(audioBlob, channelNumber);
                 }
             };
             
-            fileReader.onerror = () => {
-                // Hata durumunda ham veriyi gönder
+            fileReader.onerror = (error) => {
+                // Okuma hatası, yine de göndermeyi dene
+                logger.error("Dosya okuma hatası, ham veri gönderiliyor", error);
                 sendAudioData(audioBlob, channelNumber);
             };
             
             fileReader.readAsArrayBuffer(audioBlob);
         } catch (error) {
-            // Hata durumunda ham veriyi gönder
+            // Genel hata, yine de göndermeyi dene
+            logger.error("Ses normalleştirme hatası, ham veri gönderiliyor", error);
             sendAudioData(audioBlob, channelNumber);
         }
     };
     
-    // Ses verisini WebSocket üzerinden gönder
+    /**
+     * Ses Verisini WebSocket Üzerinden Gönderme
+     * ----------------------------------------
+     * Ses verisini Base64 formatına dönüştürür ve JSON olarak
+     * WebSocket sunucusuna gönderir. Diğer kullanıcılar tarafından alınır.
+     */
     const sendAudioData = (audioBlob, channelNumber) => {
         if (!socket || socket.readyState !== WebSocket.OPEN) {
-            console.error("Ses verisi gönderilemiyor: WebSocket bağlantısı açık değil.");
+            logger.error("Ses verisi gönderilemiyor: WebSocket bağlantısı açık değil");
             return;
         }
         
-        // Boyut kontrolü
+        // Ses verisi boyut kontrolü
         if (audioBlob.size > 100000) {
-            console.warn("Ses verisi çok büyük, sıkıştırılıyor...");
-            // Daha düşük kalite için burada sıkıştırma işlemi yapılabilir
+            logger.warn(`Ses verisi çok büyük: ${audioBlob.size} bytes, sıkıştırma gerekebilir`);
         } else if (audioBlob.size < 1000) {
-            console.warn("Ses verisi çok küçük, gönderilmiyor...");
+            logger.warn(`Ses verisi çok küçük: ${audioBlob.size} bytes, gönderilmiyor`);
             return;
         }
+        
+        logger.debug(`Ses verisi gönderiliyor: Kanal #${channelNumber}, ${audioBlob.size} bytes`);
         
         try {
-            // JSON formatında kanal ve kullanıcı bilgisini içeren ses verisi gönder
+            // FileReader ile Blob'u Base64'e dönüştür
             const reader = new FileReader();
         
-            reader.onloadend = function () {
+            reader.onloadend = function() {
                 try {
                     const result = reader.result;
         
+                    // Sonuç kontrolü
                     if (!result || typeof result !== 'string') {
-                        console.error("FileReader sonucu geçersiz");
+                        logger.error("FileReader sonucu geçersiz");
                         return;
                     }
         
+                    // MIME tipi kontrolü
                     if (!result.startsWith("data:audio")) {
-                        console.error("Beklenmeyen MIME tipi");
+                        logger.error(`Beklenmeyen MIME tipi: ${result.split(',')[0]}`);
                         return;
                     }
         
+                    // Base64 veriyi al (data:audio/xxx;base64, kısmını atla)
                     const base64Audio = result.split(',')[1];
                     
                     // Sunucunun beklediği formatta veri hazırlama
                     const audioMessage = {
-                        type: 'audio',
-                        channel: channelNumber.toString(), // String olarak gönder
-                        clientId: clientId,
-                        audioData: base64Audio,
-                        format: audioBlob.type || 'audio/webm;codecs=opus',
-                        timestamp: Date.now()
+                        type: 'audio',                            // Mesaj türü
+                        channel: channelNumber.toString(),        // Kanal numarası (string olarak)
+                        clientId: clientId,                       // Gönderen kimliği
+                        audioData: base64Audio,                   // Base64 kodlu ses verisi
+                        format: audioBlob.type || 'audio/webm',   // Ses formatı
+                        timestamp: Date.now()                     // Zaman damgası
                     };
                     
                     // JSON formatına dönüştür
                     const jsonData = JSON.stringify(audioMessage);
+                    
+                    // LOGLAMA: Veri boyutlarını takip et
+                    const dataSizeKB = Math.round(jsonData.length / 1024);
+                    logger.debug(`Gönderilen veri boyutu: ${dataSizeKB} KB, ses format: ${audioMessage.format}`);
         
-                    // Veriyi gönder
+                    // Veriyi WebSocket üzerinden gönder
                     socket.send(jsonData);
-                    console.log("Ses verisi gönderildi");
+                    logger.success(`Ses verisi başarıyla gönderildi: Kanal #${channelNumber}`);
         
                 } catch (e) {
-                    console.error("Ses verisi JSON'a çevrilirken hata:", e);
+                    logger.error("Ses verisi JSON'a dönüştürülürken hata oluştu", e);
                 }
             };
         
             reader.onerror = function(error) {
-                console.error("FileReader hatası:", error);
+                logger.error("FileReader hatası, ses gönderilemedi", error);
             };
         
+            // Base64'e dönüştürme işlemini başlat
             reader.readAsDataURL(audioBlob);
         
         } catch (err) {
-            console.error("FileReader hatası:", err);
+            logger.error("Ses gönderme genel hatası", err);
         }
     };
     
+    /**
+     * =====================================================
+     * TELSİZ KONTROL FONKSİYONLARI
+     * =====================================================
+     * Aşağıdaki fonksiyonlar, telsizin açılması/kapanması, kanal değiştirme
+     * ve kullanıcı arayüzü güncellemeleri gibi işlemleri gerçekleştirir.
+     */
+    
     // Telsiz açma/kapama fonksiyonu
     const toggleRadio = () => {
+        // Telsiz durumunu değiştir
         isRadioOn = !isRadioOn;
 
         // UI güncelleme
         if (isRadioOn) {
+            logger.info("Telsiz açılıyor...");
+            
             // Telsiz açık durumunda güç ışığını yeşil yap
             powerIndicator.style.backgroundColor = '#00ff00';
             powerIndicator.style.boxShadow = '0 0 10px #00ff00';
             
-            // Ekranları göster
+            // UI elementlerini göster
             if (channelDisplay) channelDisplay.style.display = 'block';
             if (usersCountDisplay) usersCountDisplay.style.display = 'block';
             if (channelUpBtn) channelUpBtn.style.display = 'block';
             if (channelDownBtn) channelDownBtn.style.display = 'block';
             if (codeZeroBtn) codeZeroBtn.style.display = 'block';
             
-            console.log("Telsiz açıldı");
+            logger.success("Telsiz açıldı");
             document.getElementById("users-count").style.display = "Block";
 
-            radioOnSound.play();
+            // Telsiz açılış sesini çal
+            radioOnSound.play().catch(err => {
+                logger.warn("Açılış sesi çalınamadı", err);
+            });
             
             // Statik gürültüyü başlat
-            if (!staticNoise) staticNoise = createStaticNoise();
+            if (!staticNoise) {
+                logger.debug("Statik gürültü modülü oluşturuluyor");
+                staticNoise = createStaticNoise();
+            }
             staticNoise.start();
             
             // WebSocket bağlantısını kur
@@ -815,13 +1207,18 @@ document.addEventListener('DOMContentLoaded', function() {
             updateChannelDisplay();
             
             // Mikrofon erişimini kontrol et
-            if (!mediaRecorder) requestMicrophoneAccess();
+            if (!mediaRecorder) {
+                logger.debug("MediaRecorder henüz oluşturulmamış, mikrofon erişimi isteniyor");
+                requestMicrophoneAccess();
+            }
         } else {
+            logger.info("Telsiz kapatılıyor...");
+            
             // Telsiz kapalı durumunda güç ışığını kırmızı yap
             powerIndicator.style.backgroundColor = '#333';
             powerIndicator.style.boxShadow = '0 0 5px rgba(0, 0, 0, 0.5)';
             
-            // Ekranları gizle
+            // UI elementlerini gizle
             if (channelDisplay) channelDisplay.style.display = 'none';
             if (usersCountDisplay) usersCountDisplay.style.display = 'none';
             if (peerIdDisplay) peerIdDisplay.style.display = 'none';
@@ -829,32 +1226,42 @@ document.addEventListener('DOMContentLoaded', function() {
             if (channelDownBtn) channelDownBtn.style.display = 'none';
             if (codeZeroBtn) codeZeroBtn.style.display = 'none';
             
-            console.log("Telsiz kapatıldı");
+            logger.success("Telsiz kapatıldı");
             document.getElementById("users-count").style.display = "none";
 
-            radioOffSound.play();
+            // Telsiz kapanış sesini çal
+            radioOffSound.play().catch(err => {
+                logger.warn("Kapanış sesi çalınamadı", err);
+            });
             
             // Statik gürültüyü durdur
-            if (staticNoise) staticNoise.stop();
+            if (staticNoise) {
+                staticNoise.stop();
+                logger.debug("Statik gürültü durduruldu");
+            }
             
             // Ses kaydını durdur, eğer aktifse
-            if (mediaRecorder && mediaRecorder.state === 'recording') stopRecording();
+            if (mediaRecorder && mediaRecorder.state === 'recording') {
+                stopRecording();
+                logger.debug("Aktif ses kaydı durduruldu");
+            }
             
             // WebSocket bağlantısını kapat
             if (socket && socket.readyState === WebSocket.OPEN) {
                 // Kanaldan ayrıl
                 leaveChannel(currentChannel);
                 socket.close();
+                logger.debug("WebSocket bağlantısı kapatıldı");
             }
             
-            // Ekranı temizle
+            // UI'ı temizle
             const connectionStatus = document.getElementById('connectionStatus');
             if (connectionStatus) {
                 connectionStatus.innerText = 'Kapalı';
                 connectionStatus.className = 'disconnected';
             }
             if (channelDisplay) channelDisplay.innerText = '--';
-            if (usersCountDisplay) usersCountDisplay.textContent = 'Kullanıcılar: 0';
+            if (usersCountDisplay) usersCountDisplay.textContent = 'USERS: 0';
         }
     };
     
@@ -930,44 +1337,123 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     };
     
+    // Kod 0 Sesi Çalma Fonksiyonu - sendCodeZeroNotification fonksiyonundan önce ekleyelim
+    // Kod 0 ses dosyasını çalma fonksiyonu
+    const playCode0Sound = () => {
+        if (!isRadioOn) return;
+        
+        logger.warn("KOD 0 ACİL DURUM SESİ ÇALINIYOR!");
+        
+        try {
+            // Şu anda bir ses çalıyorsa durdur
+            if (isCurrentlyPlayingAudio) {
+                // Kuyruktaki sesleri temizle ve çalan sesleri durdur
+                audioPlaybackQueue = [];
+                // Statik sesi kıs
+                if (staticNoise) {
+                    staticNoise.setVolume(0.001);
+                }
+            }
+            
+            // Telsiz üzerinde görsel acil durum efekti 
+            const radioWrapper = document.querySelector('.radio-wrapper');
+            if (radioWrapper) {
+                // Acil durum kırmızı yanıp sönme efekti
+                radioWrapper.style.animation = 'code0-flash 0.5s infinite alternate';
+                radioWrapper.style.boxShadow = '0 0 20px #ff0000';
+                
+                // 10 saniye sonra efekti kaldır
+                setTimeout(() => {
+                    radioWrapper.style.animation = '';
+                    radioWrapper.style.boxShadow = '';
+                }, 10000);
+            }
+            
+            // Kod 0 sesini maksimum ses seviyesinde çal
+            code0Sound.volume = 1.0;
+            code0Sound.play().catch(err => {
+                logger.error("Kod 0 sesi çalma hatası:", err);
+            });
+            
+            // LCD ekranı acil durum animasyonu göstersin
+            const lcdDisplay = document.querySelector('.lcd-display');
+            if (lcdDisplay) {
+                lcdDisplay.classList.add('emergency');
+                
+                // Ekranda "KOD 0" yazısını göster
+                const lcdFreq = document.querySelector('.lcd-freq');
+                if (lcdFreq) {
+                    const originalText = lcdFreq.textContent;
+                    lcdFreq.textContent = "KOD 0";
+                    lcdFreq.style.color = "#ff0000";
+                    
+                    // 10 saniye sonra normal göstergeye dön
+                    setTimeout(() => {
+                        lcdFreq.textContent = originalText;
+                        lcdFreq.style.color = "";
+                        lcdDisplay.classList.remove('emergency');
+                    }, 10000);
+                }
+            }
+            
+            // Ses bittiğinde normal duruma dön
+            code0Sound.onended = () => {
+                logger.debug("Kod 0 ses çalma tamamlandı");
+                // Statik sesi normale döndür
+                if (staticNoise) {
+                    staticNoise.setVolume(0.01);
+                }
+                // Ses çalma kilidini kaldır
+                isCurrentlyPlayingAudio = false;
+                // Bekleyen sesleri işle
+                setTimeout(processAudioQueue, 500);
+            };
+        } catch (error) {
+            logger.error("Kod 0 sesi çalınırken hata oluştu", error);
+        }
+    };
+    
     // Kod 0 Bildirimi Gönderme Fonksiyonu
     const sendCodeZeroNotification = () => {
         if (!isRadioOn) return;
         
         console.log("Kod 0 bildirim isteği gönderiliyor...");
         
-        // Kullanıcılara bildirim göndermek için önce izin isteyelim
+        // Yerel bildirim izinlerini kontrol et
         if (!("Notification" in window)) {
             alert("Bu tarayıcı bildirim özelliğini desteklemiyor!");
         } else if (Notification.permission === "granted") {
-            // Bildirim izni zaten var, bildirim gönder
-            sendNotificationToEveryone();
+            // Bildirim izni zaten var, sunucuya Kod 0 mesajı gönder
+            sendCode0SoundToServer();
         } else if (Notification.permission !== "denied") {
             // İzin istenmemiş, izin iste
             Notification.requestPermission().then(permission => {
                 if (permission === "granted") {
-                    sendNotificationToEveryone();
+                    sendCode0SoundToServer();
                 }
             });
         }
     };
     
-    // Tüm kullanıcılara bildirim gönder
-    const sendNotificationToEveryone = () => {
-        // Kendimize bildirim gönderelim
-        showNotification("KOD 0 ACİL DURUM", `${clientId} tarafından KOD 0 acil durum bildirildi!`);
-        
-        // WebSocket üzerinden diğer kullanıcılara bildirim gönder
+    // Yeni fonksiyon: Sunucuya Kod 0 Ses mesajı gönderme
+    const sendCode0SoundToServer = () => {
+        // Sunucuya Kod 0 ses yayını başlatma mesajı gönder
         if (socket && socket.readyState === WebSocket.OPEN) {
-            const notificationMessage = {
-                type: 'notification',
-                notificationType: 'codeZero',
-                clientId: clientId,
+            const code0SoundMessage = {
+                type: 'code0Sound',
+                senderId: clientId,
                 timestamp: Date.now()
             };
             
-            socket.send(JSON.stringify(notificationMessage));
-            console.log("Kod 0 bildirimi gönderildi");
+            socket.send(JSON.stringify(code0SoundMessage));
+            logger.warn("Kod 0 ses yayını isteği sunucuya gönderildi");
+            
+            // Kendi cihazımızda da çalmaya başla
+            playCode0Sound();
+        } else {
+            logger.error("WebSocket bağlantısı yok, Kod 0 ses yayını yapılamıyor");
+            // Bağlantı yoksa bile yerel olarak çal
+            playCode0Sound();
         }
     };
     
@@ -1074,7 +1560,7 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Kod 0 butonu
     if (codeZeroBtn) {
-        codeZeroBtn.addEventListener('click', sendCodeZeroNotification);
+        codeZeroBtn.addEventListener('click', sendMP3FileToAllUsers);
     }
     
     // Sayfa kapatıldığında kaynakları temizle
