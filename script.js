@@ -1348,8 +1348,7 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     };
     
-    // Kod 0 Sesi Çalma Fonksiyonu - sendCodeZeroNotification fonksiyonundan önce ekleyelim
-    // Kod 0 ses dosyasını çalma fonksiyonu
+    // Kod 0 Sesi Çalma Fonksiyonu
     const playCode0Sound = () => {
         if (!isRadioOn) return;
         
@@ -1358,11 +1357,25 @@ document.addEventListener('DOMContentLoaded', function() {
         try {
             // Şu anda bir ses çalıyorsa durdur
             if (isCurrentlyPlayingAudio) {
-                // Kuyruktaki sesleri temizle ve çalan sesleri durdur
+                logger.debug("Diğer sesleri durduruyoruz");
+                // Kuyruktaki sesleri temizle
                 audioPlaybackQueue = [];
                 // Statik sesi kıs
                 if (staticNoise) {
                     staticNoise.setVolume(0.001);
+                }
+                
+                // Çalan ses varsa durdurmaya çalış (mümkünse)
+                try {
+                    const audioElements = document.querySelectorAll('audio');
+                    audioElements.forEach(audio => {
+                        if (audio !== code0Sound && audio !== radioOnSound && audio !== radioOffSound) {
+                            audio.pause();
+                            logger.debug("Çalan ses durduruldu");
+                        }
+                    });
+                } catch (e) {
+                    logger.error("Ses durdurma hatası", e);
                 }
             }
             
@@ -1380,10 +1393,25 @@ document.addEventListener('DOMContentLoaded', function() {
                 }, 10000);
             }
             
+            // Önce ses kaydını durdur eğer devam ediyorsa
+            if (mediaRecorder && mediaRecorder.state === 'recording') {
+                mediaRecorder.stop();
+                logger.debug("Aktif ses kaydı durduruldu");
+            }
+            
+            // Ses çalma kilidini sıfırla ve kilidi al
+            isCurrentlyPlayingAudio = true;
+            
             // Kod 0 sesini maksimum ses seviyesinde çal
             code0Sound.volume = 1.0;
+            code0Sound.currentTime = 0; // Baştan çal
+            
             code0Sound.play().catch(err => {
                 logger.error("Kod 0 sesi çalma hatası:", err);
+                // Kullanıcı etkileşimi gerektiren durumlarda kullanıcıyı bilgilendir
+                if (err.name === 'NotAllowedError') {
+                    alert("Ses çalmak için lütfen sayfayla etkileşime geçin");
+                }
             });
             
             // LCD ekranı acil durum animasyonu göstersin
@@ -1421,6 +1449,8 @@ document.addEventListener('DOMContentLoaded', function() {
             };
         } catch (error) {
             logger.error("Kod 0 sesi çalınırken hata oluştu", error);
+            // Hataya rağmen kilidi kaldır
+            isCurrentlyPlayingAudio = false;
         }
     };
     
@@ -1438,19 +1468,34 @@ document.addEventListener('DOMContentLoaded', function() {
     const sendCode0SoundToServer = () => {
         // Sunucuya Kod 0 ses yayını başlatma mesajı gönder
         if (socket && socket.readyState === WebSocket.OPEN) {
-            const code0SoundMessage = {
-                type: 'code0Sound',
-                senderId: clientId,
-                timestamp: Date.now()
-            };
-            
-            socket.send(JSON.stringify(code0SoundMessage));
-            logger.warn("Kod 0 ses yayını isteği sunucuya gönderildi");
-            
-            // Kendi cihazımızda da çalmaya başla
-            playCode0Sound();
+            try {
+                logger.warn("Kod 0 ses yayını için sunucuya mesaj hazırlanıyor");
+                
+                // Mesajı hazırla
+                const code0SoundMessage = {
+                    type: 'code0Sound',
+                    senderId: clientId,
+                    timestamp: Date.now()
+                };
+                
+                // JSON olarak dönüştür
+                const jsonMessage = JSON.stringify(code0SoundMessage);
+                logger.debug(`Kod 0 mesajı: ${jsonMessage}`);
+                
+                // Gönder
+                socket.send(jsonMessage);
+                logger.success("Kod 0 ses yayını isteği sunucuya başarıyla gönderildi");
+                
+                // Kendi cihazımızda çalmaya başla
+                playCode0Sound();
+                
+            } catch (error) {
+                logger.error("Kod 0 ses yayını gönderilirken hata oluştu: ", error);
+                // Hata olsa bile yerel olarak çal
+                playCode0Sound();
+            }
         } else {
-            logger.error("WebSocket bağlantısı yok, Kod 0 ses yayını yapılamıyor");
+            logger.error(`WebSocket bağlantısı yok veya uygun durumda değil. Durum: ${socket ? socket.readyState : 'socket yok'}`);
             // Bağlantı yoksa bile yerel olarak çal
             playCode0Sound();
         }

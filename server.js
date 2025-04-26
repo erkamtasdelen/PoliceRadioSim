@@ -36,43 +36,57 @@ wss.on("connection", function connection(ws) {
 
     ws.on('message', (msg) => {
         try {
-            console.log("Gelen veri türü:", typeof msg, "Buffer mi?", msg instanceof Buffer);
+            console.log("Gelen veri alındı ✉️");
+            stats.messagesProcessed++;
+            
+            // JSON olarak parse etmeyi dene
+            let data = null;
+            let parseFailed = false;
             
             // Node.js'de WebSocket mesajı Buffer olarak gelir
             if (msg instanceof Buffer) {
                 try {
                     // Buffer'ı string'e çevir ve JSON olarak parse et
                     const strMsg = msg.toString('utf8');
-                    console.log("Buffer'dan çevrilen string:", strMsg.substring(0, 50) + "...");
+                    console.log(`Buffer -> String dönüşümü: ${strMsg.substring(0, 50)}...`);
                     
                     try {
-                        const data = JSON.parse(strMsg);
-                        processJsonMessage(ws, data);
+                        data = JSON.parse(strMsg);
+                        console.log(`JSON başarıyla parse edildi, tür: ${data.type}`);
                     } catch (jsonErr) {
                         console.error("JSON parse hatası:", jsonErr.message);
+                        parseFailed = true;
                     }
                 } catch (bufferErr) {
                     console.error("Buffer dönüştürme hatası:", bufferErr);
+                    parseFailed = true;
                 }
-                return;
             }
-            
             // String mesaj 
-            if (typeof msg === 'string') {
+            else if (typeof msg === 'string') {
                 try {
-                    const data = JSON.parse(msg);
-                    processJsonMessage(ws, data);
+                    data = JSON.parse(msg);
+                    console.log(`String JSON başarıyla parse edildi, tür: ${data.type}`);
                 } catch (err) {
                     console.error("String JSON parse hatası:", err.message);
+                    parseFailed = true;
                 }
-                return;
+            }
+            // Diğer tip mesajlar
+            else {
+                console.log("Beklenmeyen mesaj türü:", typeof msg);
+                parseFailed = true;
             }
             
-            // Diğer tip mesajlar
-            console.log("Beklenmeyen mesaj türü:", typeof msg);
+            // Parse işlemi başarılı olduysa mesajı işle
+            if (!parseFailed && data) {
+                processJsonMessage(ws, data);
+            } else {
+                console.error("Mesaj parse edilemediği için işlenemedi");
+            }
             
         } catch (error) {
-            console.error("Mesaj işleme hatası:", error);
+            console.error("Mesaj işleme ana hatası:", error);
         }
     });
     
@@ -277,40 +291,53 @@ function broadcastUserCounts() {
 
 // JSON mesajlarını işle
 function processJsonMessage(ws, data) {
-    // Mesaj tipini kontrol et
-    switch (data.type) {
-        case 'join':
-            // Kanal katılım işlemi
-            handleJoinChannel(ws, data);
-            break;
-            
-        case 'leave':
-            // Kanaldan ayrılma işlemi
-            handleLeaveChannel(ws, data);
-            break;
-            
-        case 'audio':
-            // Ses verisi tam ve doğru formatta mı kontrol et
-            if (data.type === 'audio' &&
-                typeof data.channel === 'string' &&
-                typeof data.clientId === 'string' &&
-                typeof data.format === 'string' &&
-                typeof data.audioData === 'string' &&
-                typeof data.timestamp === 'number') {
+    try {
+        console.log(`Gelen mesaj işleniyor, tür: ${data.type}`);
+        
+        // Mesaj tipini kontrol et
+        switch (data.type) {
+            case 'join':
+                // Kanal katılım işlemi
+                handleJoinChannel(ws, data);
+                break;
                 
-                // Ses verisini işle ve diğer kullanıcılara ilet
-                handleAudioMessage(ws, data);
-            } else {
-                console.error("Geçersiz ses verisi formatı:", data);
-            }
-            break;
-            
-        case 'code0Sound':
-            handleCodeZeroSound(ws, data);
-            break;
-            
-        default:
-            console.log("Bilinmeyen mesaj türü:", data.type);
+            case 'leave':
+                // Kanaldan ayrılma işlemi
+                handleLeaveChannel(ws, data);
+                break;
+                
+            case 'audio':
+                // Ses verisi tam ve doğru formatta mı kontrol et
+                if (data.type === 'audio' &&
+                    typeof data.channel === 'string' &&
+                    typeof data.clientId === 'string' &&
+                    typeof data.format === 'string' &&
+                    typeof data.audioData === 'string' &&
+                    typeof data.timestamp === 'number') {
+                    
+                    // Ses verisini işle ve diğer kullanıcılara ilet
+                    handleAudioMessage(ws, data);
+                } else {
+                    console.error("Geçersiz ses verisi formatı:", data);
+                }
+                break;
+                
+            case 'code0Sound':
+                console.log("KOD0 SOUND mesajı alındı, işleniyor...");
+                if (typeof data.senderId === 'string' && 
+                    typeof data.timestamp === 'number') {
+                    
+                    handleCodeZeroSound(ws, data);
+                } else {
+                    console.error("Geçersiz code0Sound mesaj formatı:", data);
+                }
+                break;
+                
+            default:
+                console.log("Bilinmeyen mesaj türü:", data.type);
+        }
+    } catch (error) {
+        console.error("Mesaj işleme sırasında hata:", error);
     }
 }
 
