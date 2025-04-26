@@ -320,12 +320,12 @@ function processJsonMessage(ws, data) {
  * @param {Object} message - Gelen mesaj
  */
 function handleCodeZeroSound(sender, message) {
-    logger.warn(`Kod 0 acil durum ses yayını isteği alındı. Gönderen: ${message.senderId}`);
+    console.warn(`Kod 0 acil durum ses yayını isteği alındı. Gönderen: ${message.senderId}`);
     
     try {
         // Mesajı doğrula
         if (!message.senderId || !message.timestamp) {
-            logger.error('Eksik Kod 0 mesaj bilgileri');
+            console.error('Eksik Kod 0 mesaj bilgileri');
             return;
         }
         
@@ -341,19 +341,22 @@ function handleCodeZeroSound(sender, message) {
         const jsonMessage = JSON.stringify(broadcastMessage);
         
         // TÜM bağlı kullanıcılara gönder (kanal sınırlaması olmadan)
-        clients.forEach(client => {
+        // clients bir Map olduğu için clients.forEach üzerinde istemcilere erişim yapılamaz
+        // WebSocketServer'ın clients koleksiyonunu kullanmalıyız
+        wss.clients.forEach(client => {
             if (client.readyState === WebSocket.OPEN) {
                 client.send(jsonMessage);
+                console.log("Kod 0 sesi kullanıcıya gönderildi");
             }
         });
         
-        logger.success(`Kod 0 acil durum sesi tüm kullanıcılara yayınlandı, toplam alıcı: ${clients.size}`);
+        console.log(`Kod 0 acil durum sesi tüm kullanıcılara yayınlandı, toplam alıcı: ${wss.clients.size}`);
         
         // İstatistik güncelle
         stats.code0Broadcasts++;
         
     } catch (error) {
-        logger.error('Kod 0 acil durum ses yayını işlenirken hata oluştu:', error);
+        console.error('Kod 0 acil durum ses yayını işlenirken hata oluştu:', error);
     }
 }
 

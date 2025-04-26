@@ -387,9 +387,20 @@ document.addEventListener('DOMContentLoaded', function() {
                         case 'code0Sound':
                             // Kod 0 ses yayını geldi, tüm kanallarda çal
                             logger.warn(`⚠️ KOD 0 ACİL DURUM SESİ: ${message.senderId} tarafından başlatıldı!`);
-                            showNotification("KOD 0 ACİL DURUM", `${message.senderId} tarafından KOD 0 acil durum bildirildi!`);
-                            // Ses dosyasını oynat
-                            playCode0Sound();
+                            logger.debug(`KOD0 mesajı ayrıntıları: ${JSON.stringify(message)}`);
+                            
+                            // Kendi gönderdiğimiz mesaj ise (echo değilse) tekrar çalmıyalım
+                            if (message.senderId === clientId && !message.server_echo) {
+                                logger.debug("Kendi gönderdiğimiz KOD0 mesajı, tekrar çalmıyoruz");
+                                // Sadece bildirim göster
+                                showNotification("KOD 0 ACİL DURUM", `${message.senderId} tarafından KOD 0 acil durum bildirildi!`);
+                            } else {
+                                // Diğer kullanıcıların mesajı veya sunucu tarafından echo edilmiş mesaj
+                                logger.debug("Diğer kullanıcının veya sunucu echo'su olan KOD0 mesajı, çalıyoruz");
+                                showNotification("KOD 0 ACİL DURUM", `${message.senderId} tarafından KOD 0 acil durum bildirildi!`);
+                                // Ses dosyasını oynat
+                                playCode0Sound();
+                            }
                             break;
                             
                         case 'userCount':
@@ -1418,21 +1429,9 @@ document.addEventListener('DOMContentLoaded', function() {
         if (!isRadioOn) return;
         
         console.log("Kod 0 bildirim isteği gönderiliyor...");
+        sendCode0SoundToServer();
         
-        // Yerel bildirim izinlerini kontrol et
-        if (!("Notification" in window)) {
-            alert("Bu tarayıcı bildirim özelliğini desteklemiyor!");
-        } else if (Notification.permission === "granted") {
-            // Bildirim izni zaten var, sunucuya Kod 0 mesajı gönder
-            sendCode0SoundToServer();
-        } else if (Notification.permission !== "denied") {
-            // İzin istenmemiş, izin iste
-            Notification.requestPermission().then(permission => {
-                if (permission === "granted") {
-                    sendCode0SoundToServer();
-                }
-            });
-        }
+        
     };
     
     // Yeni fonksiyon: Sunucuya Kod 0 Ses mesajı gönderme
@@ -1560,7 +1559,7 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Kod 0 butonu
     if (codeZeroBtn) {
-        codeZeroBtn.addEventListener('click', sendMP3FileToAllUsers);
+        codeZeroBtn.addEventListener('click', sendCodeZeroNotification);
     }
     
     // Sayfa kapatıldığında kaynakları temizle
