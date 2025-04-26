@@ -239,7 +239,7 @@ button:active {
 }
 
 /* Kod 0 Acil Durum Butonu */
-.code-zero-btn {
+.send_code-zero-btn {
     position: absolute;
     bottom: 20%;
     left: 25%;
@@ -255,7 +255,7 @@ button:active {
     animation: pulse 2s infinite;
 }
 
-.code-zero-btn:active {
+.send_code-zero-btn:active {
     background-color: #aa0000;
     transform: scale(0.95);
 }
@@ -273,7 +273,7 @@ button:active {
 }
 
 @media (max-width: 768px) {
-    .code-zero-btn {
+    .send_code-zero-btn {
         width: 120px;
         height: 120px;
         bottom: 15%;
